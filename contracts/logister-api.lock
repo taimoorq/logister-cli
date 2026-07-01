@@ -1,0 +1,3 @@
+source=../logister/docs/openapi.yaml
+file=contracts/logister-openapi.yaml
+sha256=5e99134914012ad658cd23200f02f4262e5dad574d283726739feab93fa15ceb

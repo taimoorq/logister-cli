@@ -1,0 +1,57 @@
+name: Contract Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      openapi_url:
+        description: OpenAPI YAML URL
+        required: false
+        default: https://raw.githubusercontent.com/taimoorq/logister/main/docs/openapi.yaml
+  repository_dispatch:
+    types:
+      - logister-contract-updated
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Download contract
+        env:
+          INPUT_URL: ${{ inputs.openapi_url }}
+          DISPATCH_URL: ${{ github.event.client_payload.openapi_url }}
+        run: |
+          set -euo pipefail
+          url="${DISPATCH_URL:-${INPUT_URL:-https://raw.githubusercontent.com/taimoorq/logister/main/docs/openapi.yaml}}"
+          curl -fsSL "$url" -o /tmp/logister-openapi.yaml
+      - run: node scripts/sync-contract.mjs /tmp/logister-openapi.yaml
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No contract changes."
+            exit 0
+          fi
+          branch="bot/contract-sync-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add contracts/logister-openapi.yaml contracts/logister-api.lock
+          git commit -m "Sync Logister API contract"
+          git push origin "$branch"
+          gh pr create \
+            --title "Sync Logister API contract" \
+            --body "Updates the CLI contract snapshot from the main Logister API contract." \
+            --base main \
+            --head "$branch"
