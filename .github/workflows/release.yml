@@ -130,6 +130,7 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
 
           open_update_pr() {
             local dir="$1"
