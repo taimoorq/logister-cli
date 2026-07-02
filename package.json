@@ -1,23 +1,31 @@
 {
-  "name": "@logister/cli",
+  "name": "logister-cli",
   "version": "0.1.0",
   "description": "Command-line access to Logister project telemetry for humans and AI tools.",
   "type": "module",
   "bin": {
-    "logister": "./bin/logister.js"
+    "logister": "bin/logister.js"
   },
   "files": [
     "bin/",
     "src/",
+    "scripts/",
     "contracts/",
+    "docs/",
     "README.md",
+    "CONTRIBUTING.md",
     "LICENSE",
     "SECURITY.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "node --test",
     "sync:contract": "node scripts/sync-contract.mjs",
-    "check": "npm test && node bin/logister.js version && node bin/logister.js help"
+    "check:version": "node scripts/check-version.mjs",
+    "check": "npm run check:version && npm test && node bin/logister.js version && node bin/logister.js help",
+    "prepack": "npm run check:version"
   },
   "engines": {
     "node": ">=20"
@@ -25,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/taimoorq/logister-cli.git"
+    "url": "git+https://github.com/taimoorq/logister-cli.git"
   },
   "bugs": {
     "url": "https://github.com/taimoorq/logister-cli/issues"

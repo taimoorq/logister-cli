@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes target the latest released `@logister/cli` version.
+Security fixes target the latest released `logister-cli` version.
 
 ## Reporting A Vulnerability
 

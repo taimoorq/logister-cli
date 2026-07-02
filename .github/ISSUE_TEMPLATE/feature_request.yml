@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest a CLI improvement or new command.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep examples public-safe. Do not include customer data, private
+        telemetry, tokens, local config, or private endpoints.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is hard or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed CLI behavior
+      description: Include command examples if useful.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: server_support
+    attributes:
+      label: Server support needed
+      description: Note whether this requires new Logister backend endpoints or scopes.

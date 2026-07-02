@@ -25,7 +25,7 @@ This repository is intended to become public. Treat every file as publishable.
 ## CLI Design
 
 - Binary name: `logister`.
-- Package name: `@logister/cli`.
+- Package name: `logister-cli`.
 - Default output: table for humans.
 - Machine output: `--format json`, `--format ndjson`, and `--format markdown`.
 - Redaction is on by default; `--no-redact` should remain explicit.

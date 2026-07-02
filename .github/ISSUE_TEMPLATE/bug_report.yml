@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a problem with the Logister CLI.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include tokens, authorization headers, cookies, private telemetry,
+        customer payloads, local config files, private endpoints, or exploit
+        details. For security issues, use the process in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: CLI version
+      description: Run `logister version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: install_method
+    attributes:
+      label: Install method
+      placeholder: "npm, npx, source checkout, Homebrew, Scoop"
+    validations:
+      required: true
+  - type: input
+    id: os_shell
+    attributes:
+      label: Operating system and shell
+      placeholder: "macOS zsh, Windows PowerShell, Ubuntu bash"
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Logister server version
+      description: Run `logister doctor` if available. Do not paste tokens.
+      placeholder: "2.9"
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Replace private project names or URLs with placeholders.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Redact sensitive output before posting.
+    validations:
+      required: true

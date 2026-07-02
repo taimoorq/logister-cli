@@ -1,0 +1,4 @@
+# Branch protection should require CODEOWNER review on `main`.
+# Keep this aligned with the sole maintainer account.
+
+* @taimoorq
