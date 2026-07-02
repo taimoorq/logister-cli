@@ -1,6 +1,6 @@
 {
   "name": "logister-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Command-line access to Logister project telemetry for humans and AI tools.",
   "type": "module",
   "bin": {
