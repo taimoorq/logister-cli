@@ -86,9 +86,9 @@ publish boundary. Each release tag must match the version in `package.json` and
 
 - Package: `logister-cli`.
 - Enable two-factor authentication on the npm account.
-- Prefer npm trusted publishing or provenance.
-- Store `NPM_TOKEN` only in the protected `npm-publish` GitHub environment if a
-  token is still required.
+- Configure npm Trusted Publishing for the GitHub Actions workflow
+  `taimoorq/logister-cli/.github/workflows/release.yml`, environment
+  `npm-publish`, and allowed action `npm publish`.
 - Configure the `npm-publish` environment with `@taimoorq` as the required
   reviewer.
 - Set repository variable `PUBLISH_NPM=true` only when npm publishing is ready.
@@ -97,9 +97,10 @@ The release workflow separates GitHub Release creation from npm publishing.
 Publishing requires a `v*` tag, the `PUBLISH_NPM` variable, and the protected
 `npm-publish` environment.
 
-Use npm Trusted Publishing for `logister-cli` when possible. If trusted
-publishing is not configured yet, store `NPM_TOKEN` only in the protected
-`npm-publish` environment.
+Trusted Publishing is the default path. The release workflow does not export
+`NODE_AUTH_TOKEN` unless repository variable `NPM_AUTH_MODE=token` is set. If
+token publishing is deliberately needed, store `NPM_TOKEN` only in the protected
+`npm-publish` environment and confirm the token can publish `logister-cli`.
 
 ## Package Manager Repositories
 

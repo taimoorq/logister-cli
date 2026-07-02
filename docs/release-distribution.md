@@ -61,14 +61,36 @@ For CI-driven updates, set:
 
 - repository variable `PUBLISH_NPM=true`
 - repository variable `UPDATE_PACKAGE_MANAGERS=true`
-- npm Trusted Publishing for `logister-cli`, or repository secret `NPM_TOKEN`
+- npm Trusted Publishing for `logister-cli`
 - repository secret `PACKAGE_MANAGER_REPO_TOKEN` with permission to push
   branches and open pull requests in `taimoorq/homebrew-logister` and
   `taimoorq/scoop-logister`
 
+Configure npm Trusted Publishing with:
+
+- owner: `taimoorq`
+- repository: `logister-cli`
+- workflow filename: `release.yml`
+- environment: `npm-publish`
+- allowed action: `npm publish`
+
+The workflow intentionally does not export `NODE_AUTH_TOKEN` in the trusted
+publishing path. A stale or under-scoped npm token can make the registry return
+a misleading `404 Not Found - PUT https://registry.npmjs.org/logister-cli`.
+
+If trusted publishing is unavailable and token publishing is deliberately
+needed, set repository variable `NPM_AUTH_MODE=token` and store `NPM_TOKEN` in
+the protected `npm-publish` environment.
+
 On a `vX.Y.Z` tag, the release workflow publishes npm first, waits for the npm
 tarball to become available, computes its SHA256, updates the Homebrew formula
 and Scoop manifest, and opens package-manager PRs for owner review.
+
+The GitHub Release step is idempotent. If a package publish fails after the
+release is created, commit the fix, move the same `vX.Y.Z` tag to the fixed
+commit if that version is still unpublished on npm, and the workflow will update
+the existing release assets instead of failing because the release already
+exists.
 
 ## Update Command Behavior
 

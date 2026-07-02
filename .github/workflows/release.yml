@@ -27,14 +27,22 @@ jobs:
       - run: npm test
       - run: npm pack
       - run: shasum -a 256 *.tgz > checksums.txt
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --notes "Logister CLI $GITHUB_REF_NAME" \
-            *.tgz checksums.txt
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --notes "Logister CLI $GITHUB_REF_NAME"
+            gh release upload "$GITHUB_REF_NAME" *.tgz checksums.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --notes "Logister CLI $GITHUB_REF_NAME" \
+              *.tgz checksums.txt
+          fi
 
   publish-npm:
     if: ${{ vars.PUBLISH_NPM == 'true' }}
@@ -50,19 +58,28 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run check:version -- --tag-required
       - run: npm test
-      - name: Publish to npm
+      - name: Publish to npm with trusted publishing
+        if: ${{ vars.NPM_AUTH_MODE != 'token' }}
+        run: |
+          node --version
+          npm --version
+          npm publish --access public
+      - name: Publish to npm with token fallback
+        if: ${{ vars.NPM_AUTH_MODE == 'token' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            unset NODE_AUTH_TOKEN
+            echo "NPM_AUTH_MODE=token requires an NPM_TOKEN environment secret." >&2
+            exit 1
           fi
+          node --version
+          npm --version
           npm publish --access public --provenance
 
   update-package-managers:
