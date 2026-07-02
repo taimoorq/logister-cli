@@ -59,7 +59,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run check:version -- --tag-required
       - run: npm test
@@ -68,6 +67,9 @@ jobs:
         run: |
           node --version
           npm --version
+          unset NODE_AUTH_TOKEN
+          npm config delete //registry.npmjs.org/:_authToken || true
+          npm config set registry https://registry.npmjs.org
           npm publish --access public
       - name: Publish to npm with token fallback
         if: ${{ vars.NPM_AUTH_MODE == 'token' }}
@@ -80,6 +82,8 @@ jobs:
           fi
           node --version
           npm --version
+          npm config set registry https://registry.npmjs.org
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
           npm publish --access public --provenance
 
   update-package-managers:

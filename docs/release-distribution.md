@@ -74,9 +74,10 @@ Configure npm Trusted Publishing with:
 - environment: `npm-publish`
 - allowed action: `npm publish`
 
-The workflow intentionally does not export `NODE_AUTH_TOKEN` in the trusted
-publishing path. A stale or under-scoped npm token can make the registry return
-a misleading `404 Not Found - PUT https://registry.npmjs.org/logister-cli`.
+The workflow intentionally clears `NODE_AUTH_TOKEN` and removes registry token
+configuration in the trusted publishing path. A stale, placeholder, or
+under-scoped npm token can make the registry return a misleading
+`404 Not Found - PUT https://registry.npmjs.org/logister-cli`.
 
 If trusted publishing is unavailable and token publishing is deliberately
 needed, set repository variable `NPM_AUTH_MODE=token` and store `NPM_TOKEN` in
