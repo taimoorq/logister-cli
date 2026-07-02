@@ -47,7 +47,7 @@ feature-gated until the server exposes those endpoints.
 
 ### npm
 
-After the package is published:
+Use npm when Node is already part of your toolchain:
 
 ```bash
 npm install -g logister-cli
@@ -67,16 +67,29 @@ yarn global add logister-cli
 pnpm add -g logister-cli
 ```
 
-### Homebrew and Windows package managers
+### Homebrew
 
-The planned release path is documented in
-[docs/release-distribution.md](docs/release-distribution.md):
+Use Homebrew on macOS or Linuxbrew:
 
-- Homebrew tap for macOS and Linuxbrew users
-- Scoop for Windows
-- winget after a stable portable Windows artifact exists
+```bash
+brew tap taimoorq/logister
+brew install logister
+logister version
+```
 
-Until those package-manager manifests exist, use npm, yarn, pnpm, or `npx`.
+### Scoop
+
+Use Scoop on Windows:
+
+```powershell
+scoop bucket add logister https://github.com/taimoorq/scoop-logister
+scoop install logister
+logister version
+```
+
+The full release distribution plan is documented in
+[docs/release-distribution.md](docs/release-distribution.md). winget remains a
+later option after there is a stable portable Windows artifact.
 
 ### Local development install
 

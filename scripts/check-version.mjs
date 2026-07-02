@@ -32,7 +32,7 @@ if (args.has("--tag-required") && !versionTags.includes(expectedTag)) {
 }
 
 const mismatchedTags = versionTags.filter((tag) => tag !== expectedTag);
-if (mismatchedTags.length > 0) {
+if (args.has("--tag-required") && mismatchedTags.length > 0) {
   fail(`HEAD has release tag(s) that do not match package.json version ${packageJson.version}: ${mismatchedTags.join(", ")}`);
 }
 

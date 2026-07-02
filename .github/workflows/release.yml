@@ -59,4 +59,85 @@ jobs:
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            unset NODE_AUTH_TOKEN
+          fi
+          npm publish --access public --provenance
+
+  update-package-managers:
+    if: ${{ vars.PUBLISH_NPM == 'true' && vars.UPDATE_PACKAGE_MANAGERS == 'true' }}
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Wait for npm tarball
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          for attempt in $(seq 1 24); do
+            if npm view "logister-cli@${version}" dist.tarball >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "logister-cli@${version} is not visible on npm yet." >&2
+          exit 1
+      - name: Clone package-manager repositories
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_MANAGER_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh repo clone taimoorq/homebrew-logister ../homebrew-logister
+          gh repo clone taimoorq/scoop-logister ../scoop-logister
+      - name: Update package-manager metadata
+        run: npm run update:package-managers
+      - name: Open package-manager update PRs
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_MANAGER_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          open_update_pr() {
+            local dir="$1"
+            local repo="$2"
+            local title="Update Logister CLI to ${version}"
+            local branch="bot/logister-cli-v${version}"
+            cd "$dir"
+            if git diff --quiet; then
+              echo "No package-manager changes for ${repo}."
+              cd - >/dev/null
+              return
+            fi
+            git checkout -B "$branch"
+            git add .
+            git commit -m "$title"
+            git push --force-with-lease origin "$branch"
+            if gh pr view "$branch" --repo "$repo" >/dev/null 2>&1; then
+              gh pr edit "$branch" --repo "$repo" \
+                --title "$title" \
+                --body "Updates package-manager metadata for logister-cli ${version}."
+            else
+              gh pr create --repo "$repo" \
+                --base main \
+                --head "$branch" \
+                --title "$title" \
+                --body "Updates package-manager metadata for logister-cli ${version}."
+            fi
+            cd - >/dev/null
+          }
+
+          open_update_pr ../homebrew-logister taimoorq/homebrew-logister
+          open_update_pr ../scoop-logister taimoorq/scoop-logister

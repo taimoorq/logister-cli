@@ -97,6 +97,10 @@ The release workflow separates GitHub Release creation from npm publishing.
 Publishing requires a `v*` tag, the `PUBLISH_NPM` variable, and the protected
 `npm-publish` environment.
 
+Use npm Trusted Publishing for `logister-cli` when possible. If trusted
+publishing is not configured yet, store `NPM_TOKEN` only in the protected
+`npm-publish` environment.
+
 ## Package Manager Repositories
 
 When Homebrew and Scoop support are added:
@@ -105,6 +109,16 @@ When Homebrew and Scoop support are added:
 - Protect their `main` branches with owner-only CODEOWNER review.
 - Let automation open update PRs, not push directly to `main`.
 - Require checks before formula or manifest updates merge.
+
+For automated release PRs from `logister-cli`, store a narrowly scoped token as
+`PACKAGE_MANAGER_REPO_TOKEN` in the CLI repository. The token needs access to
+push branches and open pull requests in:
+
+- `taimoorq/homebrew-logister`
+- `taimoorq/scoop-logister`
+
+Keep direct pushes to `main` restricted to `@taimoorq`; automation should only
+push `bot/logister-cli-v*` branches.
 
 ## Sensitive Data Rules
 

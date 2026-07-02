@@ -16,14 +16,14 @@ Version numbers, release tags, and package-manager manifests must follow
    - One-off use: `npx logister-cli doctor`
 
 2. Homebrew for macOS and Linuxbrew users
-   - Planned tap: `logister/homebrew-tap`
-   - Install shape: `brew tap logister/tap && brew install logister`
-   - Formula should depend on Node LTS and install the versioned npm tarball or
-     GitHub Release tarball for the same CLI version.
+   - Tap repository: `taimoorq/homebrew-logister`
+   - Install shape: `brew tap taimoorq/logister && brew install logister`
+   - Formula depends on Node and installs the versioned npm registry tarball for
+     the same CLI version.
 
 3. Scoop for Windows
-   - Planned bucket: `logister/scoop-bucket`
-   - Install shape: `scoop bucket add logister https://github.com/logister/scoop-bucket && scoop install logister`
+   - Bucket repository: `taimoorq/scoop-logister`
+   - Install shape: `scoop bucket add logister https://github.com/taimoorq/scoop-logister && scoop install logister`
    - Start here before winget because it is simpler for script-based CLIs.
 
 4. winget later
@@ -36,15 +36,39 @@ On every `vX.Y.Z` tag:
 
 1. Confirm `package.json`, `package-lock.json`, and the `vX.Y.Z` tag match.
 2. Run CI checks.
-3. Create a GitHub Release with the packed tarball, checksums, and contract SHA.
-4. Publish the npm package with provenance when the protected publishing
+3. Publish the npm package with provenance when the protected publishing
    environment is enabled.
+4. Create a GitHub Release with the packed tarball, checksums, and contract SHA.
 5. Keep npm as the `latest` dist-tag for stable releases.
 6. Use `next` for prerelease npm dist-tags.
 7. Open automated update PRs for package-manager metadata:
-   - `logister/homebrew-tap`
-   - `logister/scoop-bucket`
+   - `taimoorq/homebrew-logister`
+   - `taimoorq/scoop-logister`
    - winget package metadata later
+
+After the npm package exists, restamp local package-manager repos from the npm
+tarball checksum:
+
+```bash
+npm run update:package-managers
+```
+
+That updates `../homebrew-logister/Formula/logister.rb` and
+`../scoop-logister/bucket/logister.json` by downloading the published npm
+tarball and computing its SHA256.
+
+For CI-driven updates, set:
+
+- repository variable `PUBLISH_NPM=true`
+- repository variable `UPDATE_PACKAGE_MANAGERS=true`
+- npm Trusted Publishing for `logister-cli`, or repository secret `NPM_TOKEN`
+- repository secret `PACKAGE_MANAGER_REPO_TOKEN` with permission to push
+  branches and open pull requests in `taimoorq/homebrew-logister` and
+  `taimoorq/scoop-logister`
+
+On a `vX.Y.Z` tag, the release workflow publishes npm first, waits for the npm
+tarball to become available, computes its SHA256, updates the Homebrew formula
+and Scoop manifest, and opens package-manager PRs for owner review.
 
 ## Update Command Behavior
 
@@ -69,8 +93,8 @@ direct self-update separately.
 
 - Keep npm as the canonical artifact.
 - Add release provenance once npm publishing is enabled.
-- Create the Homebrew tap repository and formula.
-- Create the Scoop bucket repository and manifest.
+- Keep the Homebrew tap repository and formula aligned with the npm tarball.
+- Keep the Scoop bucket repository and manifest aligned with the npm tarball.
 - Teach `logister update` to detect npm, yarn, pnpm, Homebrew, Scoop, and winget.
 - Set `LOGISTER_INSTALL_SOURCE` in package-manager wrappers when practical.
 - Add release workflow jobs that open tap/bucket PRs after npm publish and
