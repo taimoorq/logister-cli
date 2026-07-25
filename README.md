@@ -1,9 +1,9 @@
 # Logister CLI
 
-`logister` is the command-line companion for Logister. It helps developers and
-AI coding tools inspect project telemetry, logs, grouped issues, and
-investigation context from a Logister server without exposing project ingest
-keys.
+`logister` lets developers, operators, scripts, and coding agents inspect a
+Logister project from the terminal. It reads projects, recent telemetry,
+grouped issues, and redacted investigation context without reusing the
+write-only API keys embedded in monitored applications.
 
 This repository is public. Do not open issues or pull requests that include
 tokens, private telemetry, customer data, local credentials, private endpoints,
@@ -11,14 +11,35 @@ or exploit details.
 
 ## Table Of Contents
 
-1. [What is this CLI for?](#what-is-this-cli-for)
-2. [How do I install it?](#how-do-i-install-it)
-3. [How do I use it?](#how-do-i-use-it)
-4. [How do I report issues and problems?](#how-do-i-report-issues-and-problems)
-5. [Security model](#security-model)
-6. [Development](#development)
-7. [Release and distribution](#release-and-distribution)
-8. [Versioning strategy](#versioning-strategy)
+1. [Quick start](#quick-start)
+2. [What is this CLI for?](#what-is-this-cli-for)
+3. [How do I install it?](#how-do-i-install-it)
+4. [How do I use it?](#how-do-i-use-it)
+5. [How do I report issues and problems?](#how-do-i-report-issues-and-problems)
+6. [Security model](#security-model)
+7. [Development](#development)
+8. [Release and distribution](#release-and-distribution)
+9. [Versioning strategy](#versioning-strategy)
+
+## Quick start
+
+You need Node.js 22 or newer and access to a Logister server that exposes the CLI API.
+
+```bash
+npm install -g logister-cli
+logister auth login --host https://logister.example.com
+logister doctor
+logister projects list
+```
+
+The login command opens a browser so you can approve a scoped CLI token. A successful `doctor` response shows the server version and feature map without printing the token. Choose a project from `projects list`, then try:
+
+```bash
+logister overview --project <project-slug> --since 24h
+logister issues list --project <project-slug> --status unresolved
+```
+
+If `doctor` reports that a feature is unavailable, the server does not expose that read endpoint yet; upgrading only the CLI will not add it.
 
 ## What is this CLI for?
 
@@ -37,11 +58,11 @@ The CLI reads through user-scoped CLI access tokens. Project ingest API keys are
 write-only credentials for SDKs and direct HTTP clients; they are intentionally
 not accepted for CLI reads.
 
-Some command groups are scaffolded for the broader Logister ecosystem. The first
-backend read slice supports `projects`, `overview`, `events`, `logs`, `issues`,
-`issues export`, `issues context`, and transaction listing through the event API.
-Commands for traces, monitors, deployments, insights, and metrics remain
-feature-gated until the server exposes those endpoints.
+The current Logister server supports `projects`, `overview`, `events`, `logs`,
+`issues`, `issues export`, `issues context`, and transaction listing through
+the event API. The CLI also contains commands for traces, monitors, deployments,
+insights, and metrics; `logister doctor` keeps those commands feature-gated
+until the connected server exposes their endpoints.
 
 ## How do I install it?
 
@@ -115,8 +136,9 @@ If the CLI cannot open a browser, copy the displayed URL manually:
 logister auth login --host https://logister.example.com --no-browser
 ```
 
-Saved tokens use macOS Keychain when available and fall back to the local
-`0600` config file on other platforms.
+Saved tokens use macOS Keychain when available and fall back to
+`~/.config/logister/config.json` with `0600` permissions on other platforms.
+Set `XDG_CONFIG_HOME` or `LOGISTER_CONFIG` to choose a different config path.
 
 For automation, avoid putting tokens in shell history:
 
@@ -159,6 +181,10 @@ logister logs list --project <project> --level warn,error
 logister logs tail --project <project> --follow
 ```
 
+`logs tail` requests the newest matching log slice from the server. The current
+command makes one HTTP request; `--follow` is forwarded for server capability
+compatibility and is not a local continuous-polling loop.
+
 ### 4. Investigate grouped issues
 
 ```bash
@@ -170,6 +196,15 @@ logister issues context <group-id> --project <project> --for-ai --format json
 
 `issues context` returns a minimized, server-redacted bundle designed for use
 with AI coding tools.
+
+For example, save a redacted Markdown bundle alongside a bug report:
+
+```bash
+logister issues context <group-id> \
+  --project <project> \
+  --for-ai \
+  --format markdown > logister-context.md
+```
 
 ### 5. Inspect transactions
 
@@ -191,6 +226,16 @@ for event reads.
 
 Output is redacted by default for sensitive-looking keys. Use `--no-redact` only
 when you intentionally need raw payloads and have permission to view them.
+
+For scripts, prefer JSON and let the command fail on authentication or capability errors:
+
+```bash
+logister events list \
+  --project <project> \
+  --type error \
+  --since 1h \
+  --format json > recent-errors.json
+```
 
 ## How do I report issues and problems?
 
@@ -230,19 +275,19 @@ approve, merge, tag releases, or publish packages.
 ## Development
 
 ```bash
-npm install
+npm ci
 npm test
 npm run check
 ```
 
-The CLI has no runtime npm dependencies in the first version. Keep it that way
-unless a dependency removes more risk than it adds.
+The CLI currently has no runtime npm dependencies.
 
 ## Release and distribution
 
-The npm package is the canonical release artifact. The release workflow packages
-and checks the tarball once, publishes that exact artifact to npm, then creates
-the GitHub Release with its checksums.
+The npm package is the canonical release artifact. A `vX.Y.Z` tag makes the
+release workflow test and pack one tarball, publish that artifact to npm, create
+the matching GitHub Release, wait for npm propagation, and then open update PRs
+for the Homebrew tap and Scoop bucket when package-manager updates are enabled.
 
 Distribution planning for npm, Homebrew, Scoop, and future winget support lives
 in [docs/release-distribution.md](docs/release-distribution.md).
