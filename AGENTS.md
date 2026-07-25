@@ -74,6 +74,13 @@ If Node or network state prevents a release/version check, report that directly.
 
 - The PR author cannot approve their own PR, even when they are the repository
   admin and sole `CODEOWNER`.
+- GitHub resolves `CODEOWNERS` from the PR's base branch. Adding a reviewer to
+  `CODEOWNERS` inside an already-open PR does not make that reviewer eligible
+  to provide the code-owner approval for that same PR.
+- Bootstrap a new code owner without weakening protection: grant the reviewer
+  write access, have that reviewer open the focused `CODEOWNERS` PR, and have
+  an existing code owner approve and merge it. The new owner can approve later
+  PRs after the change is present on their base branch.
 - Agents must not weaken required reviews, disable admin enforcement, or add a
   bypass to merge their own work. Obtain an independent eligible approval. A
   deliberate branch-policy change, if ever needed, belongs to the repository
