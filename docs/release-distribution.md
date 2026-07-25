@@ -87,11 +87,10 @@ On a `vX.Y.Z` tag, the release workflow publishes npm first, waits for the npm
 tarball to become available, computes its SHA256, updates the Homebrew formula
 and Scoop manifest, and opens package-manager PRs for owner review.
 
-The GitHub Release step is idempotent. If a package publish fails after the
-release is created, commit the fix, move the same `vX.Y.Z` tag to the fixed
-commit if that version is still unpublished on npm, and the workflow will update
-the existing release assets instead of failing because the release already
-exists.
+The GitHub Release step is idempotent and does not run until npm publication
+succeeds. If publication fails while the version is still unpublished, fix the
+tagged commit before retrying the workflow; never reuse a version that npm has
+accepted.
 
 ## Update Command Behavior
 
