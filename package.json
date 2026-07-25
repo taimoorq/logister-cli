@@ -1,6 +1,6 @@
 {
   "name": "logister-cli",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "description": "Command-line access to Logister project telemetry for humans and AI tools.",
   "type": "module",
   "bin": {
@@ -13,6 +13,7 @@
     "contracts/",
     "docs/",
     "README.md",
+    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE",
     "SECURITY.md"
@@ -25,11 +26,12 @@
     "sync:contract": "node scripts/sync-contract.mjs",
     "update:package-managers": "node scripts/update-package-manager-repos.mjs",
     "check:version": "node scripts/check-version.mjs",
-    "check": "npm run check:version && npm test && node bin/logister.js version && node bin/logister.js help",
+    "audit": "npm audit --audit-level=low",
+    "check": "npm run audit && npm run check:version && npm test && node bin/logister.js version && node bin/logister.js help",
     "prepack": "npm run check:version"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "license": "MIT",
   "repository": {

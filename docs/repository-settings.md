@@ -93,9 +93,9 @@ publish boundary. Each release tag must match the version in `package.json` and
   reviewer.
 - Set repository variable `PUBLISH_NPM=true` only when npm publishing is ready.
 
-The release workflow separates GitHub Release creation from npm publishing.
-Publishing requires a `v*` tag, the `PUBLISH_NPM` variable, and the protected
-`npm-publish` environment.
+The release workflow publishes the tested tarball to npm before creating its
+GitHub Release. Publishing requires a `v*` tag, the `PUBLISH_NPM` variable, and
+the protected `npm-publish` environment.
 
 Trusted Publishing is the default path. The release workflow does not export
 `NODE_AUTH_TOKEN` unless repository variable `NPM_AUTH_MODE=token` is set. If

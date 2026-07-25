@@ -47,7 +47,7 @@ feature-gated until the server exposes those endpoints.
 
 ### npm
 
-Use npm when Node is already part of your toolchain:
+Use npm when Node.js 22 or newer is already part of your toolchain:
 
 ```bash
 npm install -g logister-cli
@@ -241,8 +241,8 @@ unless a dependency removes more risk than it adds.
 ## Release and distribution
 
 The npm package is the canonical release artifact. The release workflow packages
-the npm tarball, writes checksums, creates a GitHub Release, and can publish to
-npm when the protected publishing environment is enabled.
+and checks the tarball once, publishes that exact artifact to npm, then creates
+the GitHub Release with its checksums.
 
 Distribution planning for npm, Homebrew, Scoop, and future winget support lives
 in [docs/release-distribution.md](docs/release-distribution.md).

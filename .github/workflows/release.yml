@@ -8,60 +8,53 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  package:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run check:version -- --tag-required
-      - run: npm test
+      - run: npm run check
       - run: npm pack
-      - run: shasum -a 256 *.tgz > checksums.txt
-      - name: Create or update GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" \
-              --title "$GITHUB_REF_NAME" \
-              --notes "Logister CLI $GITHUB_REF_NAME"
-            gh release upload "$GITHUB_REF_NAME" *.tgz checksums.txt --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" \
-              --title "$GITHUB_REF_NAME" \
-              --notes "Logister CLI $GITHUB_REF_NAME" \
-              *.tgz checksums.txt
-          fi
+      - run: |
+          shasum -a 256 *.tgz > checksums.txt
+          shasum -a 256 contracts/logister-openapi.yaml > contract-checksum.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: logister-cli-release
+          path: |
+            *.tgz
+            checksums.txt
+            contract-checksum.txt
+          if-no-files-found: error
 
   publish-npm:
     if: ${{ vars.PUBLISH_NPM == 'true' }}
-    needs: release
+    needs: package
     runs-on: ubuntu-latest
     environment: npm-publish
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: npm ci
-      - run: npm run check:version -- --tag-required
-      - run: npm test
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: logister-cli-release
+          path: artifacts
       - name: Publish to npm with trusted publishing
         if: ${{ vars.NPM_AUTH_MODE != 'token' }}
         run: |
@@ -70,7 +63,7 @@ jobs:
           unset NODE_AUTH_TOKEN
           npm config delete //registry.npmjs.org/:_authToken || true
           npm config set registry https://registry.npmjs.org
-          npm publish --access public
+          npm publish artifacts/*.tgz --access public
       - name: Publish to npm with token fallback
         if: ${{ vars.NPM_AUTH_MODE == 'token' }}
         env:
@@ -84,19 +77,59 @@ jobs:
           npm --version
           npm config set registry https://registry.npmjs.org
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
-          npm publish --access public --provenance
+          npm publish artifacts/*.tgz --access public --provenance
+
+  github-release:
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: logister-cli-release
+          path: artifacts
+      - name: Build release notes
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          awk -v tag="$TAG_NAME" '
+            $0 ~ "^## " tag "([[:space:]]|-|$)" {capture=1; next}
+            capture && /^## / {exit}
+            capture {print}
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "Release $TAG_NAME" > release-notes.md
+          fi
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file release-notes.md
+            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file release-notes.md \
+              artifacts/*
+          fi
 
   update-package-managers:
-    if: ${{ vars.PUBLISH_NPM == 'true' && vars.UPDATE_PACKAGE_MANAGERS == 'true' }}
-    needs: publish-npm
+    if: ${{ vars.UPDATE_PACKAGE_MANAGERS == 'true' }}
+    needs: github-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
