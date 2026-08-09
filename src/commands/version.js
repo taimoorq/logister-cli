@@ -11,9 +11,18 @@ export async function runVersionCommand(_args, context) {
   };
 
   if (context.parsed.options.check) {
-    payload.latest = await latestRelease().catch((error) => ({ error: error.message }));
+    try {
+      payload.latest = await latestRelease({
+        fetchImpl: context.fetchImpl || globalThis.fetch,
+        signal: context.signal,
+        timeoutMs: context.runtime.timeoutMs
+      });
+    } catch (error) {
+      if (error?.interrupted || context.signal?.aborted) throw error;
+      payload.latest = { error: error.message };
+    }
     payload.update_available = isNewerVersion(payload.latest.version, context.runtime.version);
   }
 
-  context.write(payload, { format: context.parsed.options.format || "table", redact: false });
+  return context.write(payload, { format: context.parsed.options.format || "table", redact: false });
 }

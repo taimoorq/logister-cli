@@ -7,18 +7,19 @@ export function shouldOpenBrowser(options, env) {
   return true;
 }
 
-export function openBrowser(url) {
-  const { command, args } = browserCommand(url);
-  const child = spawn(command, args, {
+export function openBrowser(url, { platform = process.platform, spawnImpl = spawn } = {}) {
+  const { command, args } = browserCommand(url, platform);
+  const child = spawnImpl(command, args, {
     detached: true,
-    stdio: "ignore"
+    stdio: "ignore",
+    shell: false
   });
   child.on("error", () => {});
   child.unref();
 }
 
-function browserCommand(url) {
-  if (process.platform === "darwin") return { command: "open", args: [url] };
-  if (process.platform === "win32") return { command: "cmd", args: ["/c", "start", "", url] };
+export function browserCommand(url, platform = process.platform) {
+  if (platform === "darwin") return { command: "open", args: [url] };
+  if (platform === "win32") return { command: "explorer.exe", args: [url] };
   return { command: "xdg-open", args: [url] };
 }

@@ -37,6 +37,24 @@ This repository accepts a `repository_dispatch` event:
 The workflow downloads the contract, updates `contracts/`, and opens a PR when
 there is a diff.
 
+Contract automation uses an explicit bot credential so the pull request is a
+normal externally-authored event and the required Node 22, 24, and 26 checks
+run. Configure the same narrowly scoped bot credential in both repositories:
+
+- `LOGISTER_CLI_SYNC_TOKEN` in `taimoorq/logister`, with permission to create a
+  repository dispatch event in `taimoorq/logister-cli`.
+- `LOGISTER_CLI_SYNC_BOT_TOKEN` in `taimoorq/logister-cli`, with repository
+  Contents: write and Pull requests: write.
+
+The Rails dispatch and CLI sync workflows fail when their credential is
+missing. The CLI workflow deliberately does not use its default `GITHUB_TOKEN`
+for checkout, branch push, or pull-request creation because pull requests made
+with that token cannot be relied on to trigger the required CI workflows.
+
+After configuring the credentials, manually run `CLI Contract Dispatch` in the
+Rails repository. Verify that `Contract Sync` opens a CLI pull request and that
+all three Node matrix jobs run before treating contract automation as healthy.
+
 ## Release Compatibility
 
 The backend capability response should include:

@@ -1,11 +1,12 @@
-import { ApiClient, ApiError } from "./api/client.js";
+import { ApiClient } from "./api/client.js";
 import { runAuthCommand } from "./commands/auth.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { HELP_TEXT, runHelpCommand } from "./commands/help.js";
 import { runResourceCommand } from "./commands/resources.js";
+import { optionDefinition, validateInvocation } from "./commands/specs.js";
 import { runUpdateCommand } from "./commands/update.js";
 import { runVersionCommand } from "./commands/version.js";
-import { loadRuntime } from "./config/runtime.js";
+import { loadCleanupRuntime, loadPublicRuntime, loadRuntime } from "./config/runtime.js";
 import { writeResult } from "./output/result.js";
 
 const RESOURCE_COMMANDS = new Set([
@@ -28,55 +29,59 @@ export async function main(argv, io) {
     return runHelpCommand(parsed.args, io);
   }
 
-  const runtime = await loadRuntime(parsed.options, io.env);
+  const invocation = validateInvocation(parsed);
+  if (!invocation) {
+    const error = new Error(`Unknown command: ${parsed.command}\n\n${HELP_TEXT}`);
+    error.exitCode = 2;
+    throw error;
+  }
+
+  let runtime;
+  if (["version", "update"].includes(parsed.command)) runtime = loadPublicRuntime(parsed.options, io.env);
+  else if (parsed.command === "auth" && invocation.subcommand === "logout") runtime = await loadCleanupRuntime(parsed.options, io.env);
+  else runtime = await loadRuntime(parsed.options, io.env, io.credentialStore);
   const client = new ApiClient({
     host: runtime.host,
     token: runtime.token,
     userAgent: `logister-cli/${runtime.version}`,
-    fetchImpl: globalThis.fetch
+    fetchImpl: io.fetchImpl || globalThis.fetch,
+    timeoutMs: runtime.timeoutMs,
+    retries: runtime.retries,
+    allowInsecureHttp: runtime.allowInsecureHttp,
+    legacyCredentialPending: runtime.legacyCredentialPending,
+    sleepImpl: io.sleepImpl,
+    randomImpl: io.randomImpl
   });
   const context = {
     ...io,
     parsed,
+    invocation,
     runtime,
     client,
     write: (payload, options = {}) => {
       const redact = options.redact ?? parsed.options.redact;
       return writeResult(payload, {
         stdout: io.stdout,
-        format: options.format || parsed.options.format || "table",
-        redact
+        format: options.format || parsed.options.format || runtime.format || "table",
+        redact,
+        columns: options.columns,
+        signal: io.signal,
+        onBrokenPipe: io.onBrokenPipe
       });
     }
   };
 
-  try {
-    if (parsed.command === "auth") return runAuthCommand(parsed.args, context);
-    if (parsed.command === "doctor") return runDoctorCommand(parsed.args, context);
-    if (parsed.command === "version") return runVersionCommand(parsed.args, context);
-    if (parsed.command === "update") return runUpdateCommand(parsed.args, context);
-    if (RESOURCE_COMMANDS.has(parsed.command)) return runResourceCommand(parsed.command, parsed.args, context);
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
-      error.message = [
-        "This Logister server does not expose that CLI endpoint yet.",
-        `Requested: ${error.method} ${error.path}`,
-        "Run `logister doctor` to inspect server capabilities."
-      ].join("\n");
-    }
-    throw error;
-  }
+  if (parsed.command === "auth") return runAuthCommand(parsed.args, context);
+  if (parsed.command === "doctor") return runDoctorCommand(parsed.args, context);
+  if (parsed.command === "version") return runVersionCommand(parsed.args, context);
+  if (parsed.command === "update") return runUpdateCommand(parsed.args, context);
+  if (RESOURCE_COMMANDS.has(parsed.command)) return runResourceCommand(parsed.command, parsed.args, context);
 
-  const error = new Error(`Unknown command: ${parsed.command}\n\n${HELP_TEXT}`);
-  error.exitCode = 2;
-  throw error;
+  throw new Error(`Command dispatch is not implemented: ${parsed.command}`);
 }
 
 export function parseArgs(argv) {
-  const options = {
-    format: "table",
-    redact: true
-  };
+  const options = {};
   const args = [];
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -93,32 +98,24 @@ export function parseArgs(argv) {
 
     if (arg.startsWith("--")) {
       const [rawKey, inlineValue] = arg.slice(2).split(/=(.*)/s, 2);
-      const key = normalizeOptionKey(rawKey);
+      const definition = optionDefinition(rawKey);
+      if (!definition) usageError(`Unknown option: --${rawKey}`);
 
-      if (key === "noColor") {
-        options.color = false;
-      } else if (key === "noRedact") {
-        options.redact = false;
-      } else if (isBooleanOption(key)) {
-        options[key] = true;
+      if (definition.kind === "boolean") {
+        if (inlineValue !== undefined) usageError(`Option --${rawKey} does not take a value.`);
+        setOption(options, definition, definition.value);
       } else {
         const value = inlineValue ?? optionValue(argv, index, rawKey);
         if (inlineValue === undefined) index += 1;
-        options[key] = value;
+        setOption(options, definition, value);
       }
       continue;
     }
 
     if (arg === "-h") options.help = true;
-    else if (arg === "-v") options.version = true;
-    else {
-      const error = new Error(`Unknown option: ${arg}`);
-      error.exitCode = 2;
-      throw error;
-    }
+    else if (arg === "-v") args.push("version");
+    else usageError(`Unknown option: ${arg}`);
   }
-
-  if (options.version && args.length === 0) args.push("version");
 
   return {
     command: args.shift(),
@@ -127,34 +124,29 @@ export function parseArgs(argv) {
   };
 }
 
-function normalizeOptionKey(key) {
-  return key.replace(/-([a-z])/g, (_, character) => character.toUpperCase());
-}
-
 function optionValue(argv, index, key) {
   const value = argv[index + 1];
   if (value === undefined || value.startsWith("--")) {
-    const error = new Error(`Missing value for --${key}`);
-    error.exitCode = 2;
-    throw error;
+    usageError(`Missing value for --${key}`);
   }
   return value;
 }
 
-function isBooleanOption(key) {
-  return new Set([
-    "help",
-    "check",
-    "apply",
-    "raw",
-    "noBrowser",
-    "follow",
-    "forAi",
-    "includeOccurrences",
-    "introducedToday",
-    "relatedLogs",
-    "slowest",
-    "tokenStdin",
-    "version"
-  ]).has(key);
+function setOption(options, definition, value) {
+  const { key, repeatable } = definition;
+  if (repeatable) {
+    options[key] ||= [];
+    options[key].push(value);
+    return;
+  }
+  if (Object.hasOwn(options, key)) {
+    usageError(`Option --${key.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`)} may only be specified once.`);
+  }
+  options[key] = value;
+}
+
+function usageError(message) {
+  const error = new Error(message);
+  error.exitCode = 2;
+  throw error;
 }

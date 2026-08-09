@@ -32,7 +32,8 @@ Before a stable release:
 1. Update `package.json` and `package-lock.json` to the target version.
 2. Run `npm run check`.
 3. Create a signed or owner-created tag named exactly `vX.Y.Z`.
-4. Push the tag.
+4. Confirm the tag points to the intended reviewed commit on protected `main`,
+   then push it.
 5. Let the release workflow create the GitHub Release and npm package.
 6. Update package-manager manifests to the exact same version and checksum.
 
@@ -44,6 +45,11 @@ npm run check:version -- --tag-required
 
 That check fails if the package version, lockfile version, or release tag do not
 match.
+
+The release workflow also fetches the protected default branch and fails unless
+the tag commit is reachable from it. This prevents publishing an unmerged
+pull-request or side-branch commit without spuriously rejecting a valid tag when
+`main` advances before the release workflow starts.
 
 ## Package-Manager Integration
 
@@ -97,6 +103,10 @@ remains available behind capability flags.
 
 - Stable releases publish to `latest`.
 - Prereleases publish to `next`.
+- A stable release older than the current npm `latest` is rejected so the
+  GitHub, Homebrew, and Scoop stable channels cannot be moved backward.
+- Prereleases are marked as GitHub prereleases and do not update the stable
+  Homebrew formula or Scoop manifest.
 - Emergency rollback should move the npm dist-tag instead of republishing an
   existing version.
 

@@ -1,0 +1,32 @@
+name: Release Credential Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-manager-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify package-manager repository access
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_MANAGER_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PACKAGE_MANAGER_REPO_TOKEN is required." >&2
+            exit 1
+          fi
+
+          for repo in taimoorq/homebrew-logister taimoorq/scoop-logister; do
+            permission="$(gh api "repos/${repo}" --jq '.permissions.push // false')"
+            if [ "$permission" != "true" ]; then
+              echo "PACKAGE_MANAGER_REPO_TOKEN cannot push release branches to ${repo}." >&2
+              exit 1
+            fi
+            echo "Verified branch-push access to ${repo}."
+          done
+
+          echo "Read-only credential preflight passed; no branches or pull requests were created."
