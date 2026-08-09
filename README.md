@@ -66,6 +66,8 @@ Logister API contract 3.5 adds read-only traces, monitors, deployments,
 Insights, metrics, and token-session diagnostics. Every command remains
 capability-gated: an older self-hosted server continues to support its existing
 commands and returns upgrade guidance before the CLI attempts a newer route.
+Contract 3.6 adds manager-only mobile artifact uploads behind the separate
+`mobile_artifacts` feature and `artifacts:write` scope.
 
 ## How do I install it?
 
@@ -233,6 +235,11 @@ before a server enables traces, monitors, deployments, Insights, or metrics do
 not gain those scopes automatically. If a command reports `required_scopes`,
 run `logister auth login` again and approve the displayed scopes.
 
+Artifact upload is deliberately outside that default set. Project owners and
+admins can request the additive scope with `logister auth login
+--artifact-write`; use a separate, expiring CI token with only the projects and
+scopes the build needs.
+
 Configure `--host` as an HTTPS server origin such as
 `https://logister.example.com`. Plain HTTP is accepted automatically only for
 `localhost`, `127.0.0.0/8`, and `::1`. A trusted non-loopback development
@@ -334,7 +341,45 @@ logister metrics query transactions.p95 --project <project> --window 24h \
 server applies range limits, semantic redaction, and its coverage-aware
 ClickHouse/PostgreSQL fallback before returning analytics.
 
-### 8. Paginate and choose an output format
+### 8. Upload mobile build artifacts
+
+Upload the exact artifact produced by the same release build as the app. These
+commands require an Android or iOS project, the `artifacts:write` scope, and
+project owner or admin access:
+
+```bash
+logister auth login --host https://logister.example.com --artifact-write
+
+logister artifacts upload-android \
+  --project <android-project> \
+  --file app/build/outputs/mapping/release/mapping.txt \
+  --package-name com.acme.shop \
+  --version-name 1.4.0 \
+  --version-code 42
+
+logister artifacts upload-ios \
+  --project <ios-project> \
+  --file "$RUNNER_TEMP/Shop.dSYM.zip" \
+  --app-identifier com.acme.shop \
+  --version-name 1.4.0 \
+  --version-code 42 \
+  --binary-uuid AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE \
+  --architecture arm64
+```
+
+The Android command preflights and streams a non-empty `mapping.txt` up to 20
+MiB. The iOS command streams a ZIP up to 500 MiB; invoke it once for each binary
+UUID and architecture represented by the archive. Logister stores checksums and
+queues coverage refresh or UUID verification. A verified dSYM means the binary
+identity matched—it does not claim that existing events have already been
+symbolicated.
+
+Never pass a runtime mobile ingest token or an app-embedded project API key to
+these commands. In CI, provide an expiring `LOGISTER_TOKEN` created through the
+user-scoped CLI authorization flow and keep artifact upload in the trusted
+build environment.
+
+### 9. Paginate and choose an output format
 
 ```bash
 --format table

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { DEFAULT_READ_SCOPES, runAuthCommand } from "../src/commands/auth.js";
+import { ARTIFACT_WRITE_SCOPE, DEFAULT_READ_SCOPES, runAuthCommand } from "../src/commands/auth.js";
 
 test("auth login uses device authorization when no token is supplied", async () => {
   const tempDir = await mkdtemp(join(tmpdir(), "logister-cli-auth-"));
@@ -83,6 +83,33 @@ test("auth login uses device authorization when no token is supplied", async () 
     else process.env.LOGISTER_DISABLE_KEYCHAIN = previousDisableKeychain;
     await rm(tempDir, { recursive: true, force: true });
   }
+});
+
+test("--artifact-write requests the additive upload scope without changing the default login", async () => {
+  const requests = [];
+  const env = { LOGISTER_CONFIG: "/unused/config.json", LOGISTER_AUTH_POLL_INTERVAL_MS: "0", CI: "1" };
+  const context = authContext({
+    client: {
+      async post(path, body) {
+        requests.push({ path, body });
+        if (path.endsWith("device_authorizations")) {
+          return {
+            device_code: "device", user_code: "CODE", verification_uri: "https://logister.example.com/cli/device",
+            expires_in: 30, interval: 1
+          };
+        }
+        const error = new Error("denied");
+        error.body = { error: "access_denied" };
+        throw error;
+      }
+    },
+    env
+  });
+  context.parsed.options.artifactWrite = true;
+
+  await assert.rejects(() => runAuthCommand(["login"], context), /denied in the browser/);
+  assert.deepEqual(requests[0].body.scopes, [...DEFAULT_READ_SCOPES, ARTIFACT_WRITE_SCOPE]);
+  assert.equal(DEFAULT_READ_SCOPES.includes(ARTIFACT_WRITE_SCOPE), false);
 });
 
 test("auth login validates every terminal device-flow state", async () => {

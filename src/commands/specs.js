@@ -42,6 +42,7 @@ export const OPTION_DEFINITIONS = Object.freeze({
   "--apply": booleanOption("apply"),
   "--no-browser": booleanOption("noBrowser"),
   "--token-stdin": booleanOption("tokenStdin"),
+  "--artifact-write": booleanOption("artifactWrite"),
   "--all": booleanOption("all"),
   "--follow": booleanOption("follow"),
   "--include-archived": booleanOption("includeArchived"),
@@ -75,7 +76,14 @@ export const OPTION_DEFINITIONS = Object.freeze({
   "--repository": valueOption("repository"),
   "--source": valueOption("source"),
   "--metric": repeatableOption("metrics"),
-  "--attribute": repeatableOption("attributes")
+  "--attribute": repeatableOption("attributes"),
+  "--file": valueOption("file"),
+  "--package-name": valueOption("packageName"),
+  "--version-name": valueOption("versionName"),
+  "--version-code": valueOption("versionCode"),
+  "--app-identifier": valueOption("appIdentifier"),
+  "--binary-uuid": valueOption("binaryUuid"),
+  "--architecture": valueOption("architecture")
 });
 
 export const COMMAND_SPECS = Object.freeze({
@@ -83,7 +91,7 @@ export const COMMAND_SPECS = Object.freeze({
   auth: command({
     defaultSubcommand: "status",
     subcommands: {
-      login: spec({ options: ["host", "token", "profile", "project", "noBrowser", "tokenStdin", "timeoutMs", "retries", "allowInsecureHttp"] }),
+      login: spec({ options: ["host", "token", "profile", "project", "noBrowser", "tokenStdin", "artifactWrite", "timeoutMs", "retries", "allowInsecureHttp"] }),
       status: spec({ options: GLOBAL_OPTIONS }),
       logout: spec({ options: ["profile", "allowInsecureHttp"] })
     }
@@ -134,7 +142,11 @@ export const COMMAND_SPECS = Object.freeze({
   metrics: resource("metrics", {
     catalog: spec({ options: [...GLOBAL_OPTIONS, "window"] }),
     query: spec({ positional: ["metric"], options: [...GLOBAL_OPTIONS, "window", "environment", "release", "attributes"] })
-  })
+  }),
+  artifacts: resource("mobile_artifacts", {
+    "upload-android": spec({ options: [...GLOBAL_OPTIONS, "file", "packageName", "versionName", "versionCode", "release"] }),
+    "upload-ios": spec({ options: [...GLOBAL_OPTIONS, "file", "appIdentifier", "versionName", "versionCode", "release", "binaryUuid", "architecture"] })
+  }, "upload-android")
 });
 
 export function validateInvocation(parsed) {
@@ -290,6 +302,15 @@ function validateCommandValues(commandName, subcommand, options) {
   if (["insights", "metrics"].includes(commandName)) {
     stringOption(options, "environment", 80);
     stringOption(options, "release", 80);
+  }
+  if (commandName === "artifacts") {
+    for (const key of ["file", "packageName", "versionName", "versionCode", "appIdentifier", "binaryUuid", "architecture"]) {
+      stringOption(options, key, key === "file" ? 4096 : 255);
+    }
+    if (subcommand === "upload-ios" && options.binaryUuid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(options.binaryUuid)) {
+      usageError("--binary-uuid must be a UUID.");
+    }
+    if (subcommand === "upload-ios" && options.architecture) enumList(options.architecture, "architecture", ["arm64", "arm64e", "x86_64", "armv7"]);
   }
 }
 

@@ -7,6 +7,7 @@ Auth:
   logister auth login --host <url>
   logister auth login --host <url> --no-browser
   logister auth login --host <url> --token <token>
+  logister auth login --host <url> --artifact-write
   printf '%s' "$LOGISTER_TOKEN" | logister auth login --host <url> --token-stdin
   logister auth status
   logister auth logout
@@ -36,6 +37,8 @@ Project data:
   logister insights summary --project <project> --window 24h --metric errors.count
   logister metrics catalog --project <project> --window 24h
   logister metrics query <metric> --project <project> --attribute region=us-east
+  logister artifacts upload-android --project <project> --file mapping.txt --package-name com.acme.app --version-code 42
+  logister artifacts upload-ios --project <project> --file App.dSYM.zip --app-identifier com.acme.app --version-code 42 --binary-uuid <uuid> --architecture arm64
 
 Global options:
   --host <url>          Logister host. Overrides saved profile.

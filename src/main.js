@@ -1,5 +1,6 @@
 import { ApiClient } from "./api/client.js";
 import { runAuthCommand } from "./commands/auth.js";
+import { runArtifactsCommand } from "./commands/artifacts.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { HELP_TEXT, runHelpCommand } from "./commands/help.js";
 import { runResourceCommand } from "./commands/resources.js";
@@ -20,7 +21,8 @@ const RESOURCE_COMMANDS = new Set([
   "monitors",
   "deployments",
   "insights",
-  "metrics"
+  "metrics",
+  "artifacts"
 ]);
 
 export async function main(argv, io) {
@@ -75,6 +77,7 @@ export async function main(argv, io) {
   if (parsed.command === "doctor") return runDoctorCommand(parsed.args, context);
   if (parsed.command === "version") return runVersionCommand(parsed.args, context);
   if (parsed.command === "update") return runUpdateCommand(parsed.args, context);
+  if (parsed.command === "artifacts") return runArtifactsCommand(context);
   if (RESOURCE_COMMANDS.has(parsed.command)) return runResourceCommand(parsed.command, parsed.args, context);
 
   throw new Error(`Command dispatch is not implemented: ${parsed.command}`);

@@ -23,7 +23,7 @@ test("detects package-manager install paths", () => {
   assert.equal(detectInstallSource({ env: {}, scriptPath: "/opt/homebrew/Cellar/logister/0.1.0/bin/logister" }), "homebrew");
   assert.equal(detectInstallSource({ env: {}, scriptPath: "C:\\Users\\me\\scoop\\apps\\logister\\current\\bin\\logister.js" }), "scoop");
   assert.equal(detectInstallSource({ env: {}, scriptPath: "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\logister.exe" }), "winget");
-  assert.equal(detectInstallSource({ env: {}, scriptPath: "/Users/me/dev/logister-cli/bin/logister.js" }), "source");
+  assert.equal(detectInstallSource({ env: {}, scriptPath: "/workspace/logister-cli/bin/logister.js" }), "source");
 });
 
 test("maps update commands and automatic update support", () => {

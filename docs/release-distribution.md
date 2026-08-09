@@ -106,6 +106,26 @@ its bytes match the tested SHA256 before creating the GitHub Release. It then
 updates the Homebrew formula and Scoop manifest from that same checksum and
 opens package-manager PRs for owner review.
 
+Each package-manager PR enables auto-merge when repository rules allow it. The
+Homebrew CI job verifies the checksum, installs the formula, runs its formula
+test, and checks the installed CLI version. Scoop CI verifies the checksum,
+extracts the archive, runs the CLI directly, builds the generated wrapper, and
+runs the wrapper's version command. A protected-main CI success in each
+repository sends a `distribution-published` callback to this repository.
+
+Configure a `CLI_RELEASE_CALLBACK_TOKEN` secret in both package-manager
+repositories with only the access required to dispatch this repository's
+reconciliation workflow. Do not place the token value in a manifest, workflow,
+release note, test fixture, or planning document.
+
+The `Reconcile release distributions` workflow independently re-reads npm, the
+public GitHub Release, the Homebrew formula, and the Scoop manifest. Completion
+requires one version and one npm tarball SHA256 across all four channels. It
+publishes the result as the `release/distributions` commit status on the
+immutable release commit: `pending` while a reviewed package-manager PR is
+still waiting, and `success` only after every channel is public and verified.
+The workflow also runs daily so missed callbacks cannot hide drift.
+
 The workflow derives the channel from the strict SemVer package version:
 
 - Stable versions publish explicitly to npm `latest` and create a GitHub
