@@ -22,25 +22,39 @@ Project data:
   logister overview --project <project>
   logister events list --project <project> --type error --since 24h
   logister events show <event-id> --project <project>
-  logister logs tail --project <project> --follow
+  logister logs tail --project <project> --follow --format ndjson
   logister issues list --project <project> --status unresolved
   logister issues show <group-id> --project <project> --related-logs
-  logister issues context <group-id> --project <project> --for-ai
+  logister issues context <group-id> --project <project>
   logister transactions list --project <project>
+  logister traces list --project <project> --service api --status error
   logister traces show <trace-id> --project <project>
-  logister monitors list --project <project>
-  logister deployments list --project <project>
-  logister insights summary --project <project>
-  logister metrics catalog --project <project>
+  logister monitors list --project <project> --status missed
+  logister monitors show <monitor-uuid> --project <project>
+  logister deployments list --project <project> --environment production
+  logister deployments show <deployment-uuid> --project <project>
+  logister insights summary --project <project> --window 24h --metric errors.count
+  logister metrics catalog --project <project> --window 24h
+  logister metrics query <metric> --project <project> --attribute region=us-east
 
 Global options:
-  --host <url>        Logister host. Overrides saved profile.
-  --token <token>    CLI access token. Prefer saved auth or LOGISTER_TOKEN.
-  --profile <name>   Config profile. Defaults to LOGISTER_PROFILE or default.
-  --project <id>     Project UUID or slug.
-  --format <type>    table, json, ndjson, or markdown.
-  --no-redact        Disable output redaction for sensitive-looking keys.
-  --help             Show help.
+  --host <url>          Logister host. Overrides saved profile.
+  --token <token>       CLI access token. Prefer saved auth or LOGISTER_TOKEN.
+  --profile <name>      Config profile. Defaults to LOGISTER_PROFILE or default.
+  --project <id>        Project UUID or slug.
+  --format <type>       table, json, ndjson, or markdown.
+  --timeout-ms <n>      Request timeout from 100 to 120000 milliseconds.
+  --retries <n>         GET retries from 0 to 5. Defaults to 2.
+  --allow-insecure-http Allow credentials over non-loopback HTTP for trusted development only.
+  --no-redact           Disable additional local redaction only.
+  --help                Show help.
+
+List options:
+  --limit <n>           Page size from 1 to 100.
+  --cursor <opaque>     Continue from a server-issued cursor.
+  --all                 Fetch all pages; NDJSON streams one page at a time.
+
+Run logister doctor to inspect server capabilities and token scopes.
 `;
 
 export async function runHelpCommand(_args, { stdout }) {

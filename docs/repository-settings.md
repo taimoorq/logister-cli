@@ -39,6 +39,22 @@ push protected branches, create release tags, and publish packages.
 - Require approval for first-time contributors before fork workflows run.
 - Do not expose repository secrets to forked pull requests.
 
+### Contract Sync Credential
+
+Use a dedicated fine-grained bot token for Rails-to-CLI contract updates. Store
+it as:
+
+- `LOGISTER_CLI_SYNC_TOKEN` in `taimoorq/logister`, where it is used only to
+  dispatch `logister-contract-updated` to this repository.
+- `LOGISTER_CLI_SYNC_BOT_TOKEN` in this repository, where it is used for the
+  contract-sync checkout, `bot/contract-sync-*` branch push, and pull request.
+
+Grant access only to `taimoorq/logister-cli`, with Contents: write and Pull
+requests: write. Do not use a maintainer's broad personal token. The workflows
+fail closed when either credential is absent. Because the CLI pull request is
+created by this explicit bot credential rather than the default workflow token,
+the required Node matrix is expected to run normally.
+
 ## Main Branch Ruleset
 
 Protect `main` with a repository ruleset or branch protection rule:
@@ -81,6 +97,9 @@ Recommended rules:
 The release workflow only runs on `v*` tags, so tag protection is part of the
 publish boundary. Each release tag must match the version in `package.json` and
 `package-lock.json`; CI enforces this with `npm run check:version -- --tag-required`.
+It also requires the tag commit to be reachable from protected `main` and
+therefore part of its reviewed history. A later `main` merge does not invalidate
+an already valid release tag.
 
 ## npm Publishing
 
@@ -88,7 +107,9 @@ publish boundary. Each release tag must match the version in `package.json` and
 - Enable two-factor authentication on the npm account.
 - Configure npm Trusted Publishing for the GitHub Actions workflow
   `taimoorq/logister-cli/.github/workflows/release.yml`, environment
-  `npm-publish`, and allowed action `npm publish`.
+  `npm-publish`, and allowed action `npm publish`. Trusted-publisher fields are
+  case-sensitive and the workflow filename is only `release.yml`, not its full
+  repository path.
 - Configure the `npm-publish` environment with `@taimoorq` as the required
   reviewer.
 - Set repository variable `PUBLISH_NPM=true` only when npm publishing is ready.
@@ -96,6 +117,14 @@ publish boundary. Each release tag must match the version in `package.json` and
 The release workflow publishes the tested tarball to npm before creating its
 GitHub Release. Publishing requires a `v*` tag, the `PUBLISH_NPM` variable, and
 the protected `npm-publish` environment.
+
+Stable versions publish explicitly to npm `latest`. Strict SemVer prereleases
+publish explicitly to `next`, become GitHub prereleases, and cannot open stable
+Homebrew or Scoop update pull requests.
+
+The workflow also rejects a stable package version older than npm's current
+`latest`; this prevents a maintenance-line tag from downgrading npm `latest`,
+GitHub Latest, Homebrew, and Scoop together.
 
 Trusted Publishing is the default path. The release workflow does not export
 `NODE_AUTH_TOKEN` unless repository variable `NPM_AUTH_MODE=token` is set. If
@@ -117,6 +146,10 @@ push branches and open pull requests in:
 
 - `taimoorq/homebrew-logister`
 - `taimoorq/scoop-logister`
+
+After storing or rotating the token, manually run the `Release Credential
+Preflight` workflow. It verifies read-only that the credential has branch-push
+access to both repositories; it does not create branches or pull requests.
 
 Keep direct pushes to `main` restricted to `@taimoorq`; automation should only
 push `bot/logister-cli-v*` branches.

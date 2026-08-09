@@ -1,38 +1,34 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { releaseMetadataForVersion } from "./release-metadata.mjs";
+import { parseExactChecksum } from "./check-npm-release-state.mjs";
 
-const args = parseArgs(process.argv.slice(2));
-const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const version = args.version || packageJson.version;
-const sha256 = args.sha256 || checksumFromFile(args.checksumFile, version) || await checksumFromNpm(version);
-const homebrewDir = resolve(args.homebrewDir || "../homebrew-logister");
-const scoopDir = resolve(args.scoopDir || "../scoop-logister");
+export function updatePackageManagerRepos(args) {
+  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const version = args.version || packageJson.version;
+  const releaseMetadata = releaseMetadataForVersion(version);
 
-if (!sha256) {
-  process.stderr.write("Missing --sha256, --checksum-file, or a published npm tarball for logister-cli X.Y.Z\n");
-  process.exit(2);
+  if (releaseMetadata.is_prerelease === "true") {
+    const error = new Error(
+      `Refusing to update stable Homebrew or Scoop metadata for prerelease ${version}; ` +
+      "prereleases publish only to npm next and a GitHub prerelease."
+    );
+    error.exitCode = 2;
+    throw error;
+  }
+
+  const sha256 = validateSha256(args.sha256 || checksumFromFile(args.checksumFile, version));
+  const homebrewDir = resolve(args.homebrewDir || "../homebrew-logister");
+  const scoopDir = resolve(args.scoopDir || "../scoop-logister");
+
+  run("node", ["scripts/update-formula.mjs", "--version", version, "--sha256", sha256], homebrewDir);
+  run("node", ["scripts/update-manifest.mjs", "--version", version, "--sha256", sha256], scoopDir);
+
+  process.stdout.write(`updated package-manager repos for logister-cli ${version}\n`);
 }
-
-run("node", [
-  "scripts/update-formula.mjs",
-  "--version",
-  version,
-  "--sha256",
-  sha256
-], homebrewDir);
-
-run("node", [
-  "scripts/update-manifest.mjs",
-  "--version",
-  version,
-  "--sha256",
-  sha256
-], scoopDir);
-
-process.stdout.write(`updated package-manager repos for logister-cli ${version}\n`);
 
 function parseArgs(argv) {
   const parsed = {};
@@ -47,28 +43,16 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function checksumFromFile(path, version) {
-  if (!path) return "";
+export function checksumFromFile(path, version) {
+  if (!path) throw usageError("Missing --sha256 or --checksum-file for the canonical release artifact");
   const checksumPath = resolve(path);
   if (!existsSync(checksumPath)) throw new Error(`Checksum file not found: ${checksumPath}`);
-
-  const filename = `logister-cli-${version}.tgz`;
-  const lines = readFileSync(checksumPath, "utf8").split(/\r?\n/);
-  for (const line of lines) {
-    const [hash, file] = line.trim().split(/\s+/, 2);
-    if (file === filename) return hash;
-  }
-  return "";
+  return parseExactChecksum(readFileSync(checksumPath, "utf8"), `logister-cli-${version}.tgz`);
 }
 
-async function checksumFromNpm(version) {
-  const url = `https://registry.npmjs.org/logister-cli/-/logister-cli-${version}.tgz`;
-  const response = await fetch(url);
-  if (response.status === 404) return "";
-  if (!response.ok) throw new Error(`Failed to download npm tarball ${url}: HTTP ${response.status}`);
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  return createHash("sha256").update(buffer).digest("hex");
+export function validateSha256(value) {
+  if (!/^[a-f0-9]{64}$/.test(String(value || ""))) throw usageError("Release SHA256 must be exactly 64 lowercase hexadecimal characters");
+  return value;
 }
 
 function run(command, commandArgs, cwd) {
@@ -79,4 +63,19 @@ function run(command, commandArgs, cwd) {
 
 function toCamelCase(value) {
   return value.replace(/-([a-z])/g, (_, character) => character.toUpperCase());
+}
+
+function usageError(message) {
+  const error = new Error(message);
+  error.exitCode = 2;
+  return error;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    updatePackageManagerRepos(parseArgs(process.argv.slice(2)));
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = error.exitCode || 1;
+  }
 }

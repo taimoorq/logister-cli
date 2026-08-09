@@ -34,14 +34,16 @@ Version numbers, release tags, and package-manager manifests must follow
 
 On every `vX.Y.Z` tag:
 
-1. Confirm `package.json`, `package-lock.json`, and the `vX.Y.Z` tag match.
+1. Confirm `package.json`, `package-lock.json`, and the `vX.Y.Z` tag match, and
+   that the tag commit is reachable from protected `main`.
 2. Run CI checks.
 3. Publish the npm package with provenance when the protected publishing
    environment is enabled.
 4. Create a GitHub Release with the packed tarball, checksums, and contract SHA.
 5. Keep npm as the `latest` dist-tag for stable releases.
 6. Use `next` for prerelease npm dist-tags.
-7. Open automated update PRs for package-manager metadata:
+7. For stable releases only, open automated update PRs for package-manager
+   metadata:
    - `taimoorq/homebrew-logister`
    - `taimoorq/scoop-logister`
    - winget package metadata later
@@ -66,6 +68,10 @@ For CI-driven updates, set:
   branches and open pull requests in `taimoorq/homebrew-logister` and
   `taimoorq/scoop-logister`
 
+Run the manual `Release Credential Preflight` workflow after configuring or
+rotating that secret. The check queries effective repository permissions but
+does not create a branch or pull request.
+
 Configure npm Trusted Publishing with:
 
 - owner: `taimoorq`
@@ -73,6 +79,10 @@ Configure npm Trusted Publishing with:
 - workflow filename: `release.yml`
 - environment: `npm-publish`
 - allowed action: `npm publish`
+
+The publish job pins npm `11.19.0` on Node 24. This is above npm's trusted
+publishing minimum (`npm` 11.5.1 and Node 22.14.0) and avoids relying on the
+npm version that happens to be bundled with a runner image.
 
 The workflow intentionally clears `NODE_AUTH_TOKEN` and removes registry token
 configuration in the trusted publishing path. A stale, placeholder, or
@@ -87,10 +97,29 @@ On a `vX.Y.Z` tag, the release workflow publishes npm first, waits for the npm
 tarball to become available, computes its SHA256, updates the Homebrew formula
 and Scoop manifest, and opens package-manager PRs for owner review.
 
+The workflow derives the channel from the strict SemVer package version:
+
+- Stable versions publish explicitly to npm `latest` and create a GitHub
+  Release eligible to be `Latest`.
+- Versions containing a prerelease component publish explicitly to npm `next`,
+  create a GitHub prerelease, and skip Homebrew and Scoop updates.
+
+The package-manager update script also rejects prerelease versions, providing a
+second guard if it is run outside the release workflow.
+
+Before publishing a stable version, the workflow compares it with the current
+npm `latest` version and refuses to move the stable npm, GitHub, Homebrew, or
+Scoop channels backward. A lower maintenance-line release requires a separately
+reviewed channel policy and must not use this stable release workflow unchanged.
+Tag-triggered releases are serialized so two otherwise valid versions cannot
+race between that comparison and publication.
+
 The GitHub Release step is idempotent and does not run until npm publication
-succeeds. If publication fails while the version is still unpublished, fix the
-tagged commit before retrying the workflow; never reuse a version that npm has
-accepted.
+succeeds. If publication fails because of a transient registry or credential
+problem and npm has not accepted the version, correct the external condition
+and rerun the unchanged tagged workflow. If code must change, use a new reviewed
+version and tag; do not move the existing release tag. Never reuse a version
+that npm has accepted.
 
 ## Update Command Behavior
 

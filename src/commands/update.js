@@ -20,7 +20,17 @@ const APPLY_COMMANDS = {
 };
 
 export async function runUpdateCommand(_args, context) {
-  const latest = await latestRelease().catch((error) => ({ error: error.message }));
+  let latest;
+  try {
+    latest = await latestRelease({
+      fetchImpl: context.fetchImpl || globalThis.fetch,
+      signal: context.signal,
+      timeoutMs: context.runtime.timeoutMs
+    });
+  } catch (error) {
+    if (error?.interrupted || context.signal?.aborted) throw error;
+    latest = { error: error.message };
+  }
   const installSource = detectInstallSource({
     env: context.env || process.env,
     execPath: process.env.npm_execpath,
@@ -33,7 +43,7 @@ export async function runUpdateCommand(_args, context) {
     return;
   }
 
-  context.write({
+  return context.write({
     current_version: context.runtime.version,
     latest,
     update_available: updateAvailable,

@@ -37,6 +37,7 @@ The login command opens a browser so you can approve a scoped CLI token. A succe
 ```bash
 logister overview --project <project-slug> --since 24h
 logister issues list --project <project-slug> --status unresolved
+logister traces list --project <project-slug> --status error --since 1h
 ```
 
 If `doctor` reports that a feature is unavailable, the server does not expose that read endpoint yet; upgrading only the CLI will not add it.
@@ -52,17 +53,18 @@ data Logister stores for your projects:
 - list grouped issues
 - export issue details for debugging
 - generate minimized AI context bundles for a grouped issue
+- inspect traces, monitor health, and deployment history
+- query shared Insights summaries and metric series
 - check which CLI features a hosted or self-hosted Logister server supports
 
 The CLI reads through user-scoped CLI access tokens. Project ingest API keys are
 write-only credentials for SDKs and direct HTTP clients; they are intentionally
 not accepted for CLI reads.
 
-The current Logister server supports `projects`, `overview`, `events`, `logs`,
-`issues`, `issues export`, `issues context`, and transaction listing through
-the event API. The CLI also contains commands for traces, monitors, deployments,
-insights, and metrics; `logister doctor` keeps those commands feature-gated
-until the connected server exposes their endpoints.
+Logister API contract 3.5 adds read-only traces, monitors, deployments,
+Insights, metrics, and token-session diagnostics. Every command remains
+capability-gated: an older self-hosted server continues to support its existing
+commands and returns upgrade guidance before the CLI attempts a newer route.
 
 ## How do I install it?
 
@@ -136,9 +138,18 @@ If the CLI cannot open a browser, copy the displayed URL manually:
 logister auth login --host https://logister.example.com --no-browser
 ```
 
-Saved tokens use macOS Keychain when available and fall back to
-`~/.config/logister/config.json` with `0600` permissions on other platforms.
-Set `XDG_CONFIG_HOME` or `LOGISTER_CONFIG` to choose a different config path.
+Saved macOS Keychain tokens are bound to both the profile and normalized server
+origin. When Keychain is unavailable, the profile stores a host-bound fallback
+token in `~/.config/logister/config.json`. Unix-like systems enforce mode
+`0600`; Windows relies on the current user's profile-directory ACLs, so keep a
+custom `LOGISTER_CONFIG` in a restrictive per-user location. Set
+`XDG_CONFIG_HOME` or `LOGISTER_CONFIG` to choose a different path.
+
+Legacy profile-only Keychain entries do not record their server origin and are
+never activated automatically. `auth status` reports one as unbound; log in
+again to replace it safely. Switching `--host` also suppresses saved profile
+credentials unless the new origin matches, or an explicit `--token` or
+`LOGISTER_TOKEN` accompanies the override.
 
 For automation, avoid putting tokens in shell history:
 
@@ -157,6 +168,19 @@ LOGISTER_PROJECT=<project-uuid-or-slug> \
 logister doctor
 ```
 
+Device login requests the complete supported read-scope set. Tokens created
+before a server enables traces, monitors, deployments, Insights, or metrics do
+not gain those scopes automatically. If a command reports `required_scopes`,
+run `logister auth login` again and approve the displayed scopes.
+
+Configure `--host` as an HTTPS server origin such as
+`https://logister.example.com`. Plain HTTP is accepted automatically only for
+`localhost`, `127.0.0.0/8`, and `::1`. A trusted non-loopback development
+server requires `--allow-insecure-http` or
+`LOGISTER_ALLOW_INSECURE_HTTP=1`; bearer tokens are otherwise never sent over
+cleartext HTTP. Embedded credentials, query strings, fragments, and path
+prefixes are rejected.
+
 ### 2. Check your setup
 
 ```bash
@@ -167,7 +191,9 @@ logister update --check
 ```
 
 `doctor` reports the local CLI version, active profile, configured host, token
-presence, and the server feature map. It does not print the token value.
+presence, server feature map, and safe session/scope metadata. It never prints
+the token value. The CLI stops when it is below the server's minimum supported
+version and warns on stderr when the server recommends a newer version.
 
 ### 3. Inspect projects and telemetry
 
@@ -181,9 +207,14 @@ logister logs list --project <project> --level warn,error
 logister logs tail --project <project> --follow
 ```
 
-`logs tail` requests the newest matching log slice from the server. The current
-command makes one HTTP request; `--follow` is forwarded for server capability
-compatibility and is not a local continuous-polling loop.
+`events tail --follow` and `logs tail --follow` make a normal newest-first
+request, seed a server-issued high-water cursor, and then poll newer records in
+stable order. UUID deduplication protects against at-least-once page overlap.
+Follow uses NDJSON exclusively and stops cleanly on Ctrl-C; explicit table,
+Markdown, or JSON formats are rejected because repeated JSON documents would
+not form one valid stream. It requires a contract
+3.5 server that returns `poll_cursor`; older servers can still run tail without
+`--follow`.
 
 ### 4. Investigate grouped issues
 
@@ -191,7 +222,7 @@ compatibility and is not a local continuous-polling loop.
 logister issues list --project <project> --status unresolved
 logister issues show <group-id> --project <project> --related-logs
 logister issues export <group-id> --project <project> --format json
-logister issues context <group-id> --project <project> --for-ai --format json
+logister issues context <group-id> --project <project> --format json
 ```
 
 `issues context` returns a minimized, server-redacted bundle designed for use
@@ -202,7 +233,6 @@ For example, save a redacted Markdown bundle alongside a bug report:
 ```bash
 logister issues context <group-id> \
   --project <project> \
-  --for-ai \
   --format markdown > logister-context.md
 ```
 
@@ -215,7 +245,36 @@ logister transactions list --project <project> --status errored --min-duration-m
 Transactions currently use the event read capability and require server support
 for event reads.
 
-### 6. Choose an output format
+### 6. Inspect performance, monitors, and releases
+
+```bash
+logister traces list --project <project> --service checkout --status error --since 1h
+logister traces show <trace-id> --project <project>
+logister monitors list --project <project> --status missed
+logister monitors show <monitor-uuid> --project <project>
+logister deployments list --project <project> --environment production --source api --since 7d
+logister deployments show <deployment-uuid> --project <project>
+```
+
+These commands are read-only. The CLI intentionally does not ingest spans,
+pause monitors, create deployments, or expose project administration.
+
+### 7. Query Insights and metrics
+
+```bash
+logister insights summary --project <project> --window 24h \
+  --metric errors.count --metric transactions.p95 \
+  --attribute region=us-east
+logister metrics catalog --project <project> --window 24h
+logister metrics query transactions.p95 --project <project> --window 24h \
+  --environment production --attribute region=us-east
+```
+
+`--metric` and `--attribute key=value` are repeatable where documented. The
+server applies range limits, semantic redaction, and its coverage-aware
+ClickHouse/PostgreSQL fallback before returning analytics.
+
+### 8. Paginate and choose an output format
 
 ```bash
 --format table
@@ -224,8 +283,18 @@ for event reads.
 --format markdown
 ```
 
-Output is redacted by default for sensitive-looking keys. Use `--no-redact` only
-when you intentionally need raw payloads and have permission to view them.
+List commands accept `--limit 1..100`, an opaque `--cursor`, and `--all`.
+For large exports, use `--format ndjson --all`: each item is written as one
+JSON line while pages are fetched, rather than collecting the full result in
+memory. The writer waits for downstream pipe backpressure between records.
+JSON output preserves the API envelope; NDJSON emits item records only.
+Non-NDJSON `--all` collection is capped at 100,000 records and 32 MiB of
+serialized rows.
+
+Output is additionally redacted by the CLI for sensitive-looking keys. Use
+`--no-redact` only when you intentionally need locally unredacted fields and
+have permission to view them. It never disables mandatory server-side
+redaction.
 
 For scripts, prefer JSON and let the command fail on authentication or capability errors:
 
@@ -236,6 +305,13 @@ logister events list \
   --since 1h \
   --format json > recent-errors.json
 ```
+
+GET requests time out after 15 seconds and retry transient `429`, `500`,
+`502`, `503`, and `504` responses twice by default. Override those bounds with
+`--timeout-ms 100..120000`, `--retries 0..5`, `LOGISTER_TIMEOUT_MS`, or
+`LOGISTER_RETRIES`. Response headers and bodies share the same timeout; JSON
+responses are capped at 16 MiB. Authentication and invalid requests are never
+retried.
 
 ## How do I report issues and problems?
 

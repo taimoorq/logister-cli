@@ -24,10 +24,12 @@
   "scripts": {
     "test": "node --test",
     "sync:contract": "node scripts/sync-contract.mjs",
+    "check:contract": "node scripts/check-contract.mjs",
+    "smoke:pack": "node scripts/smoke-packed-tarball.mjs",
     "update:package-managers": "node scripts/update-package-manager-repos.mjs",
     "check:version": "node scripts/check-version.mjs",
     "audit": "npm audit --audit-level=low",
-    "check": "npm run audit && npm run check:version && npm test && node bin/logister.js version && node bin/logister.js help",
+    "check": "npm run audit && npm run check:version && npm run check:contract && npm test && node bin/logister.js version && node bin/logister.js help",
     "prepack": "npm run check:version"
   },
   "engines": {

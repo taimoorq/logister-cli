@@ -1,3 +1,3 @@
-source=../logister/docs/openapi.yaml
+source=https://raw.githubusercontent.com/taimoorq/logister/main/docs/openapi.yaml
 file=contracts/logister-openapi.yaml
-sha256=5e99134914012ad658cd23200f02f4262e5dad574d283726739feab93fa15ceb
+sha256=f8010b143c6f76db83d253aff9519f3a08467779ac79c799ac23e48b9bc0d6c7
