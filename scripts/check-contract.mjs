@@ -24,7 +24,7 @@ for (const feature of ["traces", "monitors", "deployments", "insights", "metrics
   if (!new RegExp(`^\\s+${feature}:`, "m").test(contract)) fail(`contract is missing CLI capability ${feature}`);
 }
 
-if (!/^\s*version:\s*["']?3\.5["']?\s*$/m.test(contract)) fail("CLI v1.0.0 requires API contract version 3.5");
+if (!/^\s*version:\s*["']?3\.6["']?\s*$/m.test(contract)) fail("CLI v1.0.0 requires API contract version 3.6");
 process.stdout.write(`Contract verified: ${lock.file}\nsha256=${actualSha}\n`);
 
 function parseLock(body) {

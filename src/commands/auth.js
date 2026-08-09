@@ -15,6 +15,7 @@ export const DEFAULT_READ_SCOPES = Object.freeze([
   "insights:read",
   "metrics:read"
 ]);
+export const ARTIFACT_WRITE_SCOPE = "artifacts:write";
 
 export async function runAuthCommand(args, context) {
   const subcommand = args[0] || "status";
@@ -58,9 +59,10 @@ async function saveLogin({ runtime, parsed, env, stdout, stderr, host, token, to
 }
 
 async function deviceLogin({ parsed, runtime, stdout, stderr, env, client, signal, credentialStore }) {
+  const scopes = parsed.options.artifactWrite ? [...DEFAULT_READ_SCOPES, ARTIFACT_WRITE_SCOPE] : DEFAULT_READ_SCOPES;
   const challenge = await client.post(
     "/api/v1/cli/device_authorizations",
-    { client_name: "Logister CLI", scopes: DEFAULT_READ_SCOPES },
+    { client_name: "Logister CLI", scopes },
     { auth: false, signal }
   );
   const verificationUrl = validateChallenge(challenge, { allowInsecureHttp: runtime.allowInsecureHttp });

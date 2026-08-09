@@ -74,6 +74,11 @@ export class ApiClient {
     return this.request("POST", path, { body, ...options });
   }
 
+  async upload(path, formData, options = {}) {
+    if (!(formData instanceof FormData)) usageError("Artifact upload body must be multipart form data.");
+    return this.request("POST", path, { body: formData, ...options });
+  }
+
   async request(method, path, { query = {}, body, auth = true, signal } = {}) {
     if (!this.host) usageError("Missing Logister host. Run `logister auth login --host <url>` or set LOGISTER_HOST.");
 
@@ -82,7 +87,8 @@ export class ApiClient {
       Accept: "application/json",
       "User-Agent": this.userAgent
     };
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const multipart = typeof FormData !== "undefined" && body instanceof FormData;
+    if (body !== undefined && !multipart) headers["Content-Type"] = "application/json";
     if (auth && this.token) headers.Authorization = `Bearer ${this.token}`;
     if (auth && !this.token) {
       authError(this.legacyCredentialPending
@@ -112,7 +118,7 @@ export class ApiClient {
         const response = await this.fetchImpl(url, {
           method,
           headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
+          body: body === undefined ? undefined : (multipart ? body : JSON.stringify(body)),
           signal: attemptController.signal
         });
 
@@ -250,7 +256,7 @@ function apiErrorMessage(response, payload) {
     const scopes = validatedScopes(payload.required_scopes);
     if (scopes.length > 0) {
       message += `\nRequired scopes: ${scopes.join(", ")}`;
-      message += "\nRun `logister auth login` again and approve the requested read scopes.";
+      message += "\nRun `logister auth login` again and approve the requested scopes.";
     }
   }
   if (response.status === 401) message += "\nRun `logister auth login` again to refresh your CLI session.";

@@ -34,6 +34,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      - name: Check public repository safety
+        run: bash scripts/publication-safety-check.sh
       - name: Resolve immutable release tag
         id: release_ref
         env:
@@ -413,6 +415,7 @@ jobs:
           open_update_pr() {
             local dir="$1"
             local repo="$2"
+            local metadata_file="$3"
             local title="Update Logister CLI to ${version}"
             local branch="bot/logister-cli-v${version}"
             cd "$dir"
@@ -422,22 +425,38 @@ jobs:
               return
             fi
             git checkout -B "$branch"
-            git add .
+            git add -- "$metadata_file"
+            staged_files="$(git diff --cached --name-only)"
+            if [ "$staged_files" != "$metadata_file" ]; then
+              echo "::error::Expected only $metadata_file to be staged in $repo; found: $staged_files"
+              exit 1
+            fi
             git commit -m "$title"
             git push --force-with-lease origin "$branch"
-            if gh pr view "$branch" --repo "$repo" >/dev/null 2>&1; then
-              gh pr edit "$branch" --repo "$repo" \
+
+            pr_number="$(gh pr list --repo "$repo" --state all --head "$branch" --json number --jq '.[0].number // empty')"
+            if [ -n "$pr_number" ]; then
+              state="$(gh pr view "$pr_number" --repo "$repo" --json state --jq .state)"
+              if [ "$state" = "CLOSED" ]; then
+                gh pr reopen "$pr_number" --repo "$repo"
+              fi
+              gh pr edit "$pr_number" --repo "$repo" \
                 --title "$title" \
                 --body "Updates package-manager metadata for logister-cli ${version}."
             else
-              gh pr create --repo "$repo" \
+              pr_url="$(gh pr create --repo "$repo" \
                 --base main \
                 --head "$branch" \
                 --title "$title" \
-                --body "Updates package-manager metadata for logister-cli ${version}."
+                --body "Updates package-manager metadata for logister-cli ${version}.")"
+              pr_number="${pr_url##*/}"
+            fi
+
+            if ! gh pr merge "$pr_number" --repo "$repo" --auto --squash; then
+              echo "::warning::Auto-merge is unavailable for $repo PR #$pr_number. The release remains incomplete until the reviewed PR merges."
             fi
             cd - >/dev/null
           }
 
-          open_update_pr ../homebrew-logister taimoorq/homebrew-logister
-          open_update_pr ../scoop-logister taimoorq/scoop-logister
+          open_update_pr ../homebrew-logister taimoorq/homebrew-logister Formula/logister.rb
+          open_update_pr ../scoop-logister taimoorq/scoop-logister bucket/logister.json

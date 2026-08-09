@@ -1,0 +1,89 @@
+name: Release from main
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    branches:
+      - main
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-from-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out released commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Confirm released commit is current main
+        id: main
+        env:
+          CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          current_main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [ "$CANDIDATE_SHA" = "$current_main_sha" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping stale CI commit $CANDIDATE_SHA; main is $current_main_sha."
+          fi
+
+      - name: Set up Node.js
+        if: steps.main.outputs.current == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Resolve release tag
+        if: steps.main.outputs.current == 'true'
+        id: version
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          grep -Eq "^## ${tag}([[:space:]]|-|$)" CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no heading for ${tag}."
+            exit 1
+          }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing tag and publishable changes
+        if: steps.main.outputs.current == 'true'
+        id: tag
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+            tagged_sha="$(git rev-list -n 1 "$tag")"
+            if [ "$tagged_sha" = "${{ github.event.workflow_run.head_sha }}" ]; then
+              echo "::notice::${tag} already identifies this commit. Use the tagged Release workflow for recovery."
+            elif git diff --quiet "$tagged_sha" "${{ github.event.workflow_run.head_sha }}" -- bin src contracts docs README.md; then
+              echo "::notice::Only tooling or test files changed since ${tag}; no release is needed."
+            else
+              echo "::error::Publishable files changed since ${tag}. Bump package.json and package-lock.json and add changelog notes."
+              exit 1
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create immutable release tag
+        if: steps.main.outputs.current == 'true' && steps.tag.outputs.exists != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release logister-cli ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
