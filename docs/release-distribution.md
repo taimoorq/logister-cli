@@ -133,6 +133,12 @@ and rerun the unchanged tagged workflow. If code must change, use a new reviewed
 version and tag; do not move the existing release tag. Never reuse a version
 that npm has accepted.
 
+If release-workflow code must be corrected before npm accepts the version, fix
+the workflow on protected `main` without moving the tag. Then manually dispatch
+the workflow with that existing `vX.Y.Z` tag. Recovery checks out the tagged
+commit, repeats the tag/version/main-ancestry and package checks, and publishes
+the same immutable source through the protected npm environment.
+
 ## Update Command Behavior
 
 `logister update --check` should detect the installation source and print the
