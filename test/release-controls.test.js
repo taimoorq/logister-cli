@@ -153,13 +153,19 @@ test("release workflow applies the ref, dist-tag, and package-manager guards", (
   const registryVerification = workflow.indexOf("name: Verify published npm bytes and dist-tag");
   const githubRelease = workflow.indexOf("github-release:");
 
-  assert.match(workflow, /^name: Release \(vX\.Y\.Z tag only\)$/m);
+  assert.match(workflow, /^name: Release \(immutable vX\.Y\.Z tag\)$/m);
   assert.match(workflow, /on:\s+push:\s+tags:\s+- "v\*"/s);
+  assert.match(workflow, /workflow_dispatch:\s+inputs:\s+tag:\s+description: Existing immutable vX\.Y\.Z tag to recover\s+required: true/s);
+  assert.match(workflow, /ref: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.tag \|\| github\.ref \}\}/);
+  assert.match(workflow, /--tag-ref "refs\/tags\/\$\{RELEASE_TAG\}"/);
+  assert.equal((workflow.match(/ref: \$\{\{ needs\.package\.outputs\.tag \}\}/g) || []).length, 3);
+  assert.doesNotMatch(workflow, /\$GITHUB_REF_NAME/);
   assert.match(workflow, /node scripts\/check-release-ref\.mjs/);
   assert.match(workflow, /node scripts\/check-release-channel\.mjs/);
   assert.match(workflow, /npm run smoke:pack -- "\.\/\$\{tarball\}"/);
   assert.match(workflow, /node scripts\/check-npm-release-state\.mjs/);
   assert.match(workflow, /steps\.npm_state\.outputs\.publish_required == 'true'/);
+  assert.equal((workflow.match(/npm publish "\.\/artifacts\/logister-cli-\$\{RELEASE_VERSION\}\.tgz"/g) || []).length, 2);
   assert.ok(finalPublish >= 0 && finalPublish < registryVerification);
   assert.ok(registryVerification < githubRelease);
   assert.match(workflow, /Verify published npm bytes and dist-tag[\s\S]*--require-published[\s\S]*for attempt in \$\(seq 1 24\)/);
@@ -172,7 +178,7 @@ test("release workflow applies the ref, dist-tag, and package-manager guards", (
   assert.match(workflow, /--latest=false/);
   assert.match(workflow, /--draft=false/);
   assert.match(workflow, /if \[ "\$is_draft" != "true" \]; then\s+verify_public_release "\$verify_dir"\s+exit 0/s);
-  assert.match(workflow, /gh release upload "\$GITHUB_REF_NAME" artifacts\/\* --clobber\s+verify_release_assets "\$verify_dir"\s+gh release edit "\$GITHUB_REF_NAME" \\\s+--draft=false/s);
+  assert.match(workflow, /gh release upload "\$RELEASE_TAG" artifacts\/\* --clobber\s+verify_release_assets "\$verify_dir"\s+gh release edit "\$RELEASE_TAG" \\\s+--draft=false/s);
   assert.match(workflow, /diff -u "\$expected_assets" "\$actual_assets"/);
   assert.match(workflow, /cmp "artifacts\/\$\{asset_name\}" "\$\{downloads\}\/\$\{asset_name\}"/);
   assert.match(workflow, /name: logister-cli-release[\s\S]*path: artifacts[\s\S]*--checksum-file "\$GITHUB_WORKSPACE\/artifacts\/checksums\.txt"/);

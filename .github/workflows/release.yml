@@ -1,9 +1,15 @@
-name: Release (vX.Y.Z tag only)
+name: Release (immutable vX.Y.Z tag)
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable vX.Y.Z tag to recover
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,23 +25,37 @@ jobs:
       version: ${{ steps.release_metadata.outputs.version }}
       is_prerelease: ${{ steps.release_metadata.outputs.is_prerelease }}
       npm_dist_tag: ${{ steps.release_metadata.outputs.npm_dist_tag }}
+      tag: ${{ steps.release_ref.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      - name: Resolve immutable release tag
+        id: release_ref
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release recovery requires a strict vX.Y.Z tag; received ${REQUESTED_TAG:-empty}." >&2
+            exit 1
+          fi
+          echo "tag=$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
       - name: Verify tag is on protected main
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_TAG: ${{ steps.release_ref.outputs.tag }}
         run: |
           set -euo pipefail
           main_ref="refs/remotes/origin/${DEFAULT_BRANCH}"
           expected_tag="v$(node -p "require('./package.json').version")"
           git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:${main_ref}"
           node scripts/check-release-ref.mjs \
-            --tag-ref "$GITHUB_REF" \
+            --tag-ref "refs/tags/${RELEASE_TAG}" \
             --expected-tag "$expected_tag" \
             --main-ref "$main_ref"
       - run: npm ci
@@ -79,6 +99,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.tag }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -160,7 +182,7 @@ jobs:
           unset NODE_AUTH_TOKEN
           npm config delete //registry.npmjs.org/:_authToken || true
           npm config set registry https://registry.npmjs.org
-          npm publish "artifacts/logister-cli-${RELEASE_VERSION}.tgz" \
+          npm publish "./artifacts/logister-cli-${RELEASE_VERSION}.tgz" \
             --access public \
             --provenance \
             --tag "$NPM_DIST_TAG"
@@ -180,7 +202,7 @@ jobs:
           npm --version
           npm config set registry https://registry.npmjs.org
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
-          npm publish "artifacts/logister-cli-${RELEASE_VERSION}.tgz" \
+          npm publish "./artifacts/logister-cli-${RELEASE_VERSION}.tgz" \
             --access public \
             --provenance \
             --tag "$NPM_DIST_TAG"
@@ -215,18 +237,21 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.package.outputs.tag }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: logister-cli-release
           path: artifacts
       - name: Build release notes
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ needs.package.outputs.tag }}
         run: node scripts/extract-release-notes.mjs --tag "$TAG_NAME" --output release-notes.md
       - name: Create or converge GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           IS_PRERELEASE: ${{ needs.package.outputs.is_prerelease }}
+          RELEASE_TAG: ${{ needs.package.outputs.tag }}
         run: |
           set -euo pipefail
 
@@ -251,14 +276,14 @@ jobs:
 
             find artifacts -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort > "$expected_assets"
             test -s "$expected_assets"
-            gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | LC_ALL=C sort > "$actual_assets"
+            gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort > "$actual_assets"
             if ! diff -u "$expected_assets" "$actual_assets"; then
               echo "GitHub Release assets do not exactly match the tested release artifact set." >&2
               return 1
             fi
 
             while IFS= read -r asset_name; do
-              gh release download "$GITHUB_REF_NAME" \
+              gh release download "$RELEASE_TAG" \
                 --dir "$downloads" \
                 --pattern "$asset_name" \
                 --clobber
@@ -275,29 +300,29 @@ jobs:
             local release_name
             local release_body
             local expected_body
-            state="$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease,name --jq '[.isDraft, .isPrerelease, .name] | @tsv')"
+            state="$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,name --jq '[.isDraft, .isPrerelease, .name] | @tsv')"
             IFS=$'\t' read -r is_draft is_prerelease release_name <<< "$state"
             test "$is_draft" = "false"
             test "$is_prerelease" = "$IS_PRERELEASE"
-            test "$release_name" = "$GITHUB_REF_NAME"
-            release_body="$(gh release view "$GITHUB_REF_NAME" --json body --jq '.body')"
+            test "$release_name" = "$RELEASE_TAG"
+            release_body="$(gh release view "$RELEASE_TAG" --json body --jq '.body')"
             expected_body="$(cat release-notes.md)"
             test "$release_body" = "$expected_body"
-            is_latest="$(gh release list --limit 100 --json tagName,isLatest --jq ".[] | select(.tagName == \"${GITHUB_REF_NAME}\") | .isLatest")"
+            is_latest="$(gh release list --limit 100 --json tagName,isLatest --jq ".[] | select(.tagName == \"${RELEASE_TAG}\") | .isLatest")"
             test "$is_latest" = "$expected_latest"
             verify_release_assets "$verify_dir"
           }
 
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" \
-              --title "$GITHUB_REF_NAME" \
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
               --notes-file release-notes.md \
               --verify-tag \
               --draft \
               "${metadata_flags[@]}"
           fi
 
-          state="$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')"
+          state="$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')"
           read -r is_draft is_prerelease <<< "$state"
           verify_dir="$(mktemp -d)"
 
@@ -306,14 +331,14 @@ jobs:
             exit 0
           fi
 
-          gh release edit "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          gh release edit "$RELEASE_TAG" \
+            --title "$RELEASE_TAG" \
             --notes-file release-notes.md \
             --draft=true \
             "${metadata_flags[@]}"
-          gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          gh release upload "$RELEASE_TAG" artifacts/* --clobber
           verify_release_assets "$verify_dir"
-          gh release edit "$GITHUB_REF_NAME" \
+          gh release edit "$RELEASE_TAG" \
             --draft=false \
             "${metadata_flags[@]}" \
             "${channel_flags[@]}"
@@ -331,6 +356,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ needs.package.outputs.tag }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
