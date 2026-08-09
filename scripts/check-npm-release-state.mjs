@@ -15,6 +15,7 @@ export async function inspectNpmReleaseState({
   tarball,
   checksumFile,
   distTag,
+  requirePublished = false,
   fetchImpl = globalThis.fetch,
   registryOrigin = REGISTRY_ORIGIN
 }) {
@@ -30,7 +31,10 @@ export async function inspectNpmReleaseState({
   const registry = new URL(registryOrigin);
   const metadataUrl = new URL(`/logister-cli/${encodeURIComponent(version)}`, registry);
   const metadataResponse = await fetchBounded(metadataUrl, fetchImpl, MAX_METADATA_BYTES, { allowNotFound: true });
-  if (metadataResponse.notFound) return { publishRequired: true, sha256: localHash, version, distTag };
+  if (metadataResponse.notFound) {
+    if (requirePublished) throw new Error(`logister-cli@${version} is not published yet`);
+    return { publishRequired: true, sha256: localHash, version, distTag };
+  }
   const metadata = parseJsonObject(metadataResponse.body, "npm version metadata");
   if (metadata.version !== version) throw new Error(`npm metadata version mismatch: expected ${version}, got ${metadata.version || "(missing)"}`);
   const remoteTarball = new URL(metadata.dist?.tarball || "");
@@ -169,7 +173,8 @@ async function main() {
     version: valueAfter(args, "--version"),
     tarball: valueAfter(args, "--tarball"),
     checksumFile: valueAfter(args, "--checksum-file"),
-    distTag: valueAfter(args, "--dist-tag")
+    distTag: valueAfter(args, "--dist-tag"),
+    requirePublished: args.includes("--require-published")
   });
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, `publish_required=${result.publishRequired}\nsha256=${result.sha256}\n`, "utf8");

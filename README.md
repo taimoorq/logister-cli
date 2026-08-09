@@ -359,7 +359,8 @@ npm run check
 The CLI currently has no runtime npm dependencies.
 
 ## Release and distribution
-The npm package is the canonical release artifact. A `vX.Y.Z` tag makes the
+The npm package is the canonical release artifact. Merging a version bump runs
+CI but does not publish. A matching `vX.Y.Z` tag on protected `main` makes the
 release workflow test and pack one tarball, publish that artifact to npm, create
 the matching GitHub Release, wait for npm propagation, and then open update PRs
 for the Homebrew tap and Scoop bucket when package-manager updates are enabled.
