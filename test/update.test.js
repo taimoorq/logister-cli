@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   canApplyUpdate,
   detectInstallSource,
@@ -32,4 +33,15 @@ test("maps update commands and automatic update support", () => {
   assert.equal(canApplyUpdate("npm"), true);
   assert.equal(canApplyUpdate("homebrew"), false);
   assert.equal(canApplyUpdate("unknown"), false);
+});
+
+test("README documents every published package-manager update command", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+
+  for (const source of ["npm", "yarn", "pnpm", "homebrew", "scoop"]) {
+    assert.ok(readme.includes(updateCommandFor(source)), `README is missing the ${source} update command`);
+  }
+  assert.match(readme, /Use the same package manager that installed the CLI/);
+  assert.match(readme, /logister version --check/);
+  assert.match(readme, /logister version/);
 });

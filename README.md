@@ -14,12 +14,13 @@ or exploit details.
 1. [Quick start](#quick-start)
 2. [What is this CLI for?](#what-is-this-cli-for)
 3. [How do I install it?](#how-do-i-install-it)
-4. [How do I use it?](#how-do-i-use-it)
-5. [How do I report issues and problems?](#how-do-i-report-issues-and-problems)
-6. [Security model](#security-model)
-7. [Development](#development)
-8. [Release and distribution](#release-and-distribution)
-9. [Versioning strategy](#versioning-strategy)
+4. [How do I update it?](#how-do-i-update-it)
+5. [How do I use it?](#how-do-i-use-it)
+6. [How do I report issues and problems?](#how-do-i-report-issues-and-problems)
+7. [Security model](#security-model)
+8. [Development](#development)
+9. [Release and distribution](#release-and-distribution)
+10. [Versioning strategy](#versioning-strategy)
 
 ## Quick start
 
@@ -121,6 +122,65 @@ npm install
 npm link
 logister version
 ```
+
+## How do I update it?
+
+Use the same package manager that installed the CLI. Installing it again with a
+different package manager can leave multiple `logister` executables on your
+`PATH`.
+
+Check your installed version and the latest available release first:
+
+```bash
+logister version --check
+logister update --check
+```
+
+### npm
+
+```bash
+npm install -g logister-cli@latest
+```
+
+### Yarn
+
+```bash
+yarn global upgrade logister-cli
+```
+
+### pnpm
+
+```bash
+pnpm add -g logister-cli@latest
+```
+
+### Homebrew
+
+Refresh the tap metadata before upgrading the formula:
+
+```bash
+brew update
+brew upgrade logister
+```
+
+### Scoop
+
+Refresh Scoop and its buckets before upgrading the app:
+
+```powershell
+scoop update
+scoop update logister
+```
+
+Confirm which version your shell now resolves:
+
+```bash
+logister version
+```
+
+If the old version still appears, check for another installation earlier on
+your `PATH` with `type -a logister` on macOS/Linux or `Get-Command
+logister -All` in PowerShell.
 
 ## How do I use it?
 
