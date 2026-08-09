@@ -27,6 +27,9 @@ prereleases under an npm dist-tag such as `next`, not `latest`.
 
 ## Release Invariants
 
+Merging a version bump does not publish the CLI. Pushing the matching `vX.Y.Z`
+tag on the reviewed protected-`main` commit starts the release workflow.
+
 Before a stable release:
 
 1. Update `package.json` and `package-lock.json` to the target version.

@@ -1,4 +1,4 @@
-name: Release
+name: Release (vX.Y.Z tag only)
 
 on:
   push:
@@ -184,6 +184,27 @@ jobs:
             --access public \
             --provenance \
             --tag "$NPM_DIST_TAG"
+      - name: Verify published npm bytes and dist-tag
+        env:
+          RELEASE_VERSION: ${{ needs.package.outputs.version }}
+          NPM_DIST_TAG: ${{ needs.package.outputs.npm_dist_tag }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            if node scripts/check-npm-release-state.mjs \
+              --version "$RELEASE_VERSION" \
+              --tarball "artifacts/logister-cli-${RELEASE_VERSION}.tgz" \
+              --checksum-file artifacts/checksums.txt \
+              --dist-tag "$NPM_DIST_TAG" \
+              --require-published; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 24 ]; then
+              sleep 5
+            fi
+          done
+          echo "npm did not converge to the exact tested logister-cli@${RELEASE_VERSION} tarball and ${NPM_DIST_TAG} dist-tag." >&2
+          exit 1
 
   github-release:
     needs:
@@ -202,34 +223,101 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: node scripts/extract-release-notes.mjs --tag "$TAG_NAME" --output release-notes.md
-      - name: Create or update GitHub Release
+      - name: Create or converge GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           IS_PRERELEASE: ${{ needs.package.outputs.is_prerelease }}
         run: |
           set -euo pipefail
-          release_flags=()
-          if [ "$IS_PRERELEASE" = "true" ]; then
-            release_flags+=(--prerelease --latest=false)
-          else
-            release_flags+=(--prerelease=false --latest)
-          fi
-          release_flags+=(--draft=false)
 
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" \
-              --title "$GITHUB_REF_NAME" \
-              --notes-file release-notes.md \
-              "${release_flags[@]}"
-            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          metadata_flags=()
+          channel_flags=()
+          expected_latest="true"
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            metadata_flags+=(--prerelease)
+            channel_flags+=(--latest=false)
+            expected_latest="false"
           else
+            metadata_flags+=(--prerelease=false)
+            channel_flags+=(--latest)
+          fi
+
+          verify_release_assets() {
+            local verify_dir="$1"
+            local expected_assets="${verify_dir}/expected-assets.txt"
+            local actual_assets="${verify_dir}/actual-assets.txt"
+            local downloads="${verify_dir}/downloads"
+            mkdir -p "$downloads"
+
+            find artifacts -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort > "$expected_assets"
+            test -s "$expected_assets"
+            gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | LC_ALL=C sort > "$actual_assets"
+            if ! diff -u "$expected_assets" "$actual_assets"; then
+              echo "GitHub Release assets do not exactly match the tested release artifact set." >&2
+              return 1
+            fi
+
+            while IFS= read -r asset_name; do
+              gh release download "$GITHUB_REF_NAME" \
+                --dir "$downloads" \
+                --pattern "$asset_name" \
+                --clobber
+              cmp "artifacts/${asset_name}" "${downloads}/${asset_name}"
+            done < "$expected_assets"
+          }
+
+          verify_public_release() {
+            local verify_dir="$1"
+            local state
+            local is_draft
+            local is_prerelease
+            local is_latest
+            local release_name
+            local release_body
+            local expected_body
+            state="$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease,name --jq '[.isDraft, .isPrerelease, .name] | @tsv')"
+            IFS=$'\t' read -r is_draft is_prerelease release_name <<< "$state"
+            test "$is_draft" = "false"
+            test "$is_prerelease" = "$IS_PRERELEASE"
+            test "$release_name" = "$GITHUB_REF_NAME"
+            release_body="$(gh release view "$GITHUB_REF_NAME" --json body --jq '.body')"
+            expected_body="$(cat release-notes.md)"
+            test "$release_body" = "$expected_body"
+            is_latest="$(gh release list --limit 100 --json tagName,isLatest --jq ".[] | select(.tagName == \"${GITHUB_REF_NAME}\") | .isLatest")"
+            test "$is_latest" = "$expected_latest"
+            verify_release_assets "$verify_dir"
+          }
+
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" \
               --title "$GITHUB_REF_NAME" \
               --notes-file release-notes.md \
               --verify-tag \
-              "${release_flags[@]}" \
-              artifacts/*
+              --draft \
+              "${metadata_flags[@]}"
           fi
+
+          state="$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')"
+          read -r is_draft is_prerelease <<< "$state"
+          verify_dir="$(mktemp -d)"
+
+          if [ "$is_draft" != "true" ]; then
+            verify_public_release "$verify_dir"
+            exit 0
+          fi
+
+          gh release edit "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --draft=true \
+            "${metadata_flags[@]}"
+          gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          verify_release_assets "$verify_dir"
+          gh release edit "$GITHUB_REF_NAME" \
+            --draft=false \
+            "${metadata_flags[@]}" \
+            "${channel_flags[@]}"
+          verify_public_release "$verify_dir"
 
   update-package-managers:
     if: ${{ vars.UPDATE_PACKAGE_MANAGERS == 'true' && needs.package.outputs.is_prerelease == 'false' }}

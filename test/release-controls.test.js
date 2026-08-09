@@ -97,6 +97,13 @@ test("immutable npm reruns publish only when absent and verify exact bytes plus 
       fetchImpl: async () => new Response("{}", { status: 404, headers: { "content-type": "application/json" } })
     });
     assert.equal(absent.publishRequired, true);
+    await assert.rejects(
+      () => inspectNpmReleaseState({
+        version: "1.0.0", tarball, checksumFile, distTag: "latest", requirePublished: true,
+        fetchImpl: async () => new Response("{}", { status: 404, headers: { "content-type": "application/json" } })
+      }),
+      /is not published yet/
+    );
 
     const fetchImpl = async (url) => {
       if (url.pathname === "/logister-cli/1.0.0") {
@@ -142,12 +149,20 @@ test("package-manager checksums are a single exact lowercase canonical-artifact 
 
 test("release workflow applies the ref, dist-tag, and package-manager guards", () => {
   const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+  const finalPublish = workflow.lastIndexOf("npm publish");
+  const registryVerification = workflow.indexOf("name: Verify published npm bytes and dist-tag");
+  const githubRelease = workflow.indexOf("github-release:");
 
+  assert.match(workflow, /^name: Release \(vX\.Y\.Z tag only\)$/m);
+  assert.match(workflow, /on:\s+push:\s+tags:\s+- "v\*"/s);
   assert.match(workflow, /node scripts\/check-release-ref\.mjs/);
   assert.match(workflow, /node scripts\/check-release-channel\.mjs/);
   assert.match(workflow, /npm run smoke:pack -- "\.\/\$\{tarball\}"/);
   assert.match(workflow, /node scripts\/check-npm-release-state\.mjs/);
   assert.match(workflow, /steps\.npm_state\.outputs\.publish_required == 'true'/);
+  assert.ok(finalPublish >= 0 && finalPublish < registryVerification);
+  assert.ok(registryVerification < githubRelease);
+  assert.match(workflow, /Verify published npm bytes and dist-tag[\s\S]*--require-published[\s\S]*for attempt in \$\(seq 1 24\)/);
   assert.match(workflow, /concurrency:\s+group: release\s+cancel-in-progress: false/s);
   assert.match(workflow, /npm install --global npm@11\.19\.0/);
   assert.match(workflow, /--expected-tag "\$expected_tag"/);
@@ -156,7 +171,19 @@ test("release workflow applies the ref, dist-tag, and package-manager guards", (
   assert.match(workflow, /--prerelease/);
   assert.match(workflow, /--latest=false/);
   assert.match(workflow, /--draft=false/);
+  assert.match(workflow, /if \[ "\$is_draft" != "true" \]; then\s+verify_public_release "\$verify_dir"\s+exit 0/s);
+  assert.match(workflow, /gh release upload "\$GITHUB_REF_NAME" artifacts\/\* --clobber\s+verify_release_assets "\$verify_dir"\s+gh release edit "\$GITHUB_REF_NAME" \\\s+--draft=false/s);
+  assert.match(workflow, /diff -u "\$expected_assets" "\$actual_assets"/);
+  assert.match(workflow, /cmp "artifacts\/\$\{asset_name\}" "\$\{downloads\}\/\$\{asset_name\}"/);
   assert.match(workflow, /name: logister-cli-release[\s\S]*path: artifacts[\s\S]*--checksum-file "\$GITHUB_WORKSPACE\/artifacts\/checksums\.txt"/);
+});
+
+test("manual package-manager recovery consumes the canonical tested checksum", () => {
+  const documentation = readFileSync(new URL("../docs/release-distribution.md", import.meta.url), "utf8");
+
+  assert.match(documentation, /npm run update:package-managers -- \\\s+--version "\$version" \\\s+--checksum-file "\$PWD\/artifacts\/checksums\.txt"/);
+  assert.match(documentation, /re-downloads the tarball, and proves\s+its bytes match the tested SHA256/);
+  assert.doesNotMatch(documentation, /downloading the published npm\s+tarball and computing its SHA256/);
 });
 
 test("contract sync uses its explicit bot credential", () => {

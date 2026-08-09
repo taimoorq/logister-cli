@@ -39,25 +39,32 @@ On every `vX.Y.Z` tag:
 2. Run CI checks.
 3. Publish the npm package with provenance when the protected publishing
    environment is enabled.
-4. Create a GitHub Release with the packed tarball, checksums, and contract SHA.
-5. Keep npm as the `latest` dist-tag for stable releases.
-6. Use `next` for prerelease npm dist-tags.
-7. For stable releases only, open automated update PRs for package-manager
+4. Re-download the registry tarball and verify its SHA256 and selected npm
+   dist-tag against the exact tested artifact.
+5. Create a GitHub Release with the packed tarball, checksums, and contract SHA.
+6. Keep npm as the `latest` dist-tag for stable releases.
+7. Use `next` for prerelease npm dist-tags.
+8. For stable releases only, open automated update PRs for package-manager
    metadata:
    - `taimoorq/homebrew-logister`
    - `taimoorq/scoop-logister`
    - winget package metadata later
 
-After the npm package exists, restamp local package-manager repos from the npm
-tarball checksum:
+For manual recovery, first download the canonical `logister-cli-release`
+artifact from the successful package job into `artifacts/`. Then restamp local
+package-manager repos from its reviewed checksum:
 
 ```bash
-npm run update:package-managers
+version="$(node -p "require('./package.json').version")"
+npm run update:package-managers -- \
+  --version "$version" \
+  --checksum-file "$PWD/artifacts/checksums.txt"
 ```
 
 That updates `../homebrew-logister/Formula/logister.rb` and
-`../scoop-logister/bucket/logister.json` by downloading the published npm
-tarball and computing its SHA256.
+`../scoop-logister/bucket/logister.json` with the canonical npm tarball URL and
+the exact lowercase SHA256 already proven against the registry artifact. The
+script deliberately does not obtain a second, untrusted checksum on its own.
 
 For CI-driven updates, set:
 
@@ -94,8 +101,10 @@ needed, set repository variable `NPM_AUTH_MODE=token` and store `NPM_TOKEN` in
 the protected `npm-publish` environment.
 
 On a `vX.Y.Z` tag, the release workflow publishes npm first, waits for the npm
-tarball to become available, computes its SHA256, updates the Homebrew formula
-and Scoop manifest, and opens package-manager PRs for owner review.
+tarball and dist-tag to become available, re-downloads the tarball, and proves
+its bytes match the tested SHA256 before creating the GitHub Release. It then
+updates the Homebrew formula and Scoop manifest from that same checksum and
+opens package-manager PRs for owner review.
 
 The workflow derives the channel from the strict SemVer package version:
 
@@ -115,7 +124,10 @@ Tag-triggered releases are serialized so two otherwise valid versions cannot
 race between that comparison and publication.
 
 The GitHub Release step is idempotent and does not run until npm publication
-succeeds. If publication fails because of a transient registry or credential
+and exact registry-byte/dist-tag verification succeed. A draft receives and
+verifies all release assets before it becomes public. A compatible public
+release is verified without mutation; incompatible public metadata or assets
+fail closed. If publication fails because of a transient registry or credential
 problem and npm has not accepted the version, correct the external condition
 and rerun the unchanged tagged workflow. If code must change, use a new reviewed
 version and tag; do not move the existing release tag. Never reuse a version
