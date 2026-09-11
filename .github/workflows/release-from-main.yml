@@ -1,4 +1,4 @@
-name: Release from main
+name: Release preflight from main
 
 on:
   workflow_run:
@@ -10,7 +10,7 @@ on:
       - completed
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-from-main
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   release:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
 
     steps:
@@ -64,26 +64,28 @@ jobs:
         id: tag
         run: |
           tag="${{ steps.version.outputs.tag }}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null || status=$?
+          if [ "$status" = 0 ]; then
             git fetch origin "refs/tags/${tag}:refs/tags/${tag}"
             tagged_sha="$(git rev-list -n 1 "$tag")"
             if [ "$tagged_sha" = "${{ github.event.workflow_run.head_sha }}" ]; then
               echo "::notice::${tag} already identifies this commit. Use the tagged Release workflow for recovery."
-            elif git diff --quiet "$tagged_sha" "${{ github.event.workflow_run.head_sha }}" -- bin src contracts docs README.md; then
+            elif git diff --quiet "$tagged_sha" "${{ github.event.workflow_run.head_sha }}" -- bin src scripts contracts docs README.md package.json package-lock.json CHANGELOG.md LICENSE CONTRIBUTING.md SECURITY.md; then
               echo "::notice::Only tooling or test files changed since ${tag}; no release is needed."
             else
               echo "::error::Publishable files changed since ${tag}. Bump package.json and package-lock.json and add changelog notes."
               exit 1
             fi
             echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "$status" = 2 ]; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Release tag lookup failed; publication state is unknown."
+            exit "$status"
           fi
 
-      - name: Create immutable release tag
+      - name: Report manual release readiness
         if: steps.main.outputs.current == 'true' && steps.tag.outputs.exists != 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release logister-cli ${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          echo "::notice::${{ steps.version.outputs.tag }} passed CI at current main. After the coordinated backend release gate, manually tag the reviewed main commit and run release.yml."

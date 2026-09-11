@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.0 - 2026-09-11
+
+- Added Android R8/ProGuard mapping and Apple dSYM uploads using explicit user-scoped artifact-write authorization.
+- Pinned the reviewed API contract to an immutable Rails commit, accepted compatible 3.6 patch versions, and verified artifact operations, write scopes, and authentication.
+- Fixed Scoop distribution reconciliation for raw JSON served as text/plain while preserving exact canonical npm artifact checks.
+- Kept tagging manual after reviewed main and coordinated backend readiness; release preflight now reports readiness without creating tags.
+
 ## v1.0.0 - 2026-08-09
 
 - Added read-only traces, monitors, deployments, Insights, and metrics commands with capability negotiation for older self-hosted servers.

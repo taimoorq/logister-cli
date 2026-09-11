@@ -189,3 +189,21 @@ direct self-update separately.
 - Add release workflow jobs that open tap/bucket PRs after npm publish and
   GitHub Release creation.
 - Add winget only after a stable Windows portable artifact exists.
+
+
+### Coordinated backend releases
+
+For a coordinated ecosystem release, hold this version-changing PR until the last
+Rails release in the agreed stack has deployed successfully. Before tagging,
+refresh the contract from that exact reviewed backend commit (never mutable main):
+
+```bash
+LOGISTER_CONTRACT_SOURCE="https://raw.githubusercontent.com/taimoorq/logister/$backend_sha/docs/openapi.yaml" npm run sync:contract
+npm run check
+```
+
+The sync checks that the local canonical file matches the immutable upstream bytes
+before writing the snapshot and lock. `api_line=3.6` permits compatible patch
+versions; new API lines require explicit review along with operation/auth checks.
+The main-CI preflight is read-only. Follow the manual reviewed-main tagging steps
+above only after backend readiness and required independent PR review.

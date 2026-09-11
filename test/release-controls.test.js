@@ -9,7 +9,7 @@ import { verifyReleaseChannelOrder, verifyStableReleaseOrder } from "../scripts/
 import { releaseMetadataForVersion } from "../scripts/release-metadata.mjs";
 import { inspectNpmReleaseState, parseExactChecksum } from "../scripts/check-npm-release-state.mjs";
 import { checksumFromFile, validateSha256 } from "../scripts/update-package-manager-repos.mjs";
-import { reconcileDistributions } from "../scripts/reconcile-distributions.mjs";
+import { reconcileDistributions, DistributionPendingError } from "../scripts/reconcile-distributions.mjs";
 
 test("stable releases publish to npm latest", () => {
   assert.deepEqual(releaseMetadataForVersion("1.2.3"), {
@@ -185,15 +185,18 @@ test("release workflow applies the ref, dist-tag, and package-manager guards", (
   assert.match(workflow, /name: logister-cli-release[\s\S]*path: artifacts[\s\S]*--checksum-file "\$GITHUB_WORKSPACE\/artifacts\/checksums\.txt"/);
 });
 
-test("release-from-main tags only the successful current main commit with publishable changes", () => {
+test("release-from-main checks the successful current main commit without publishing", () => {
   const workflow = readFileSync(new URL("../.github/workflows/release-from-main.yml", import.meta.url), "utf8");
 
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /CANDIDATE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
   assert.match(workflow, /refs\/remotes\/origin\/main/);
-  assert.match(workflow, /git diff --quiet "\$tagged_sha" "\$\{\{ github\.event\.workflow_run\.head_sha \}\}" -- bin src contracts docs README\.md/);
+  assert.match(workflow, /git diff --quiet "\$tagged_sha" "\$\{\{ github\.event\.workflow_run\.head_sha \}\}" -- bin src scripts contracts docs README\.md/);
   assert.match(workflow, /Bump package\.json and package-lock\.json and add changelog notes/);
-  assert.match(workflow, /git tag -a "\$\{\{ steps\.version\.outputs\.tag \}\}"/);
+  assert.match(workflow, /contents: read/);
+  assert.match(workflow, /workflow_run\.event == 'push'/);
+  assert.match(workflow, /Release tag lookup failed/);
+  assert.doesNotMatch(workflow, /git tag -a|git push/);
   assert.doesNotMatch(workflow, /gh workflow run/);
   assert.match(workflow, /concurrency:\s+group: release-from-main\s+cancel-in-progress: false/s);
 });
@@ -214,7 +217,7 @@ test("distribution reconciliation requires npm, GitHub, Homebrew, and Scoop to s
       return new Response(`url "${tarball}"\n  sha256 "${sha256}"\n`);
     }
     if (url.includes("scoop-logister")) {
-      return jsonResponse({ version: "1.2.3", url: tarball, hash: sha256 });
+      return new Response(JSON.stringify({ version: "1.2.3", url: tarball, hash: sha256 }), { headers: { "content-type": "text/plain" } });
     }
     throw new Error(`unexpected URL ${url}`);
   };
@@ -227,6 +230,32 @@ test("distribution reconciliation requires npm, GitHub, Homebrew, and Scoop to s
     () => reconcileDistributions({ version: "1.2.3", expectedSha256: "0".repeat(64), fetchImpl }),
     /Callback SHA256 does not match npm/
   );
+  for (const invalid of ["<html>upstream error</html>", "not json", "[]", "null", "x".repeat(1_000_001)]) {
+    await assert.rejects(() => reconcileDistributions({
+      version: "1.2.3", fetchImpl: async (url) => url.includes("scoop-logister")
+        ? new Response(invalid, { headers: { "content-type": "text/plain" } }) : fetchImpl(url)
+    }));
+  }
+  for (const manifest of [
+    { version: "1.2.2", url: tarball, hash: sha256 },
+    { version: "1.2.3", url: tarball, hash: "0".repeat(64) }
+  ]) {
+    await assert.rejects(() => reconcileDistributions({
+      version: "1.2.3", fetchImpl: async (url) => url.includes("scoop-logister") ? jsonResponse(manifest) : fetchImpl(url)
+    }));
+  }
+  await assert.rejects(() => reconcileDistributions({
+    version: "1.2.3", fetchImpl: async (url) => url.includes("scoop-logister") ? new Response("upstream error", { status: 503 }) : fetchImpl(url)
+  }), /503/);
+  await assert.rejects(() => reconcileDistributions({
+    version: "1.2.3", fetchImpl: async () => jsonResponse({ version: "1.2.3", dist: { tarball: "https://example.com/package.tgz" } })
+  }), /canonical/);
+  await assert.rejects(() => reconcileDistributions({
+    version: "1.2.3", fetchImpl: async () => new Response("absent", { status: 404 })
+  }), DistributionPendingError);
+  await assert.rejects(() => reconcileDistributions({
+    version: "1.2.3", fetchImpl: async () => new Response("provider failed", { status: 503 })
+  }), (error) => !(error instanceof DistributionPendingError) && /503/.test(error.message));
 });
 
 test("package-manager PR recovery stages one file and callbacks drive aggregate completion", () => {
@@ -243,6 +272,7 @@ test("package-manager PR recovery stages one file and callbacks drive aggregate 
   assert.match(reconcileWorkflow, /context=release\/distributions/);
   assert.match(reconcileWorkflow, /state=pending/);
   assert.match(reconcileWorkflow, /state=success/);
+  assert.match(reconcileWorkflow, /state=error/);
 });
 
 test("manual package-manager recovery consumes the canonical tested checksum", () => {
@@ -271,7 +301,7 @@ test("upstream release impact is validated by the shared public workflow", () =>
 
   assert.match(workflow, /repository_dispatch:/);
   assert.match(workflow, /types: \[logister-release-impact\]/);
-  assert.match(workflow, /uses: taimoorq\/logister\/\.github\/workflows\/addon-impact-check\.yml@main/);
+  assert.match(workflow, /uses: taimoorq\/logister\/\.github\/workflows\/addon-impact-check\.yml@[a-f0-9]{40}/);
   assert.match(workflow, /release_set_sha256:/);
 });
 
