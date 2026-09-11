@@ -20,8 +20,39 @@ export const EXPECTED_CLI_OPERATIONS = Object.freeze([
   ["/api/v1/cli/projects/{project_uuid}/deployments/{uuid}", "get", "getCliDeployment"],
   ["/api/v1/cli/projects/{project_uuid}/insights", "get", "getCliInsights"],
   ["/api/v1/cli/projects/{project_uuid}/metrics/catalog", "get", "getCliMetricCatalog"],
-  ["/api/v1/cli/projects/{project_uuid}/metrics/query", "get", "queryCliMetric"]
+  ["/api/v1/cli/projects/{project_uuid}/metrics/query", "get", "queryCliMetric"],
+  ["/api/v1/cli/projects/{project_uuid}/artifacts/android-mapping", "post", "uploadCliAndroidMapping"],
+  ["/api/v1/cli/projects/{project_uuid}/artifacts/apple-dsym", "post", "uploadCliAppleDsym"]
 ]);
+
+export function verifyContractVersion(contract, supported = "3.6") {
+  const info = /^info:\s*\n([\s\S]*?)(?=^\S)/m.exec(contract)?.[1];
+  const version = /^  version:\s*["']?(\d+\.\d+(?:\.\d+)?)["']?\s*$/m.exec(info || "")?.[1];
+  if (!/^\d+\.\d+$/.test(supported) || !version || version.split(".").slice(0, 2).join(".") !== supported) {
+    throw new Error(`contract info.version ${version || "missing"} is outside reviewed API line ${supported}`);
+  }
+  return version;
+}
+
+export function verifyCanonicalSource(source) {
+  if (!/^https:\/\/raw\.githubusercontent\.com\/taimoorq\/logister\/[a-f0-9]{40}\/docs\/openapi\.yaml$/.test(source || "")) {
+    throw new Error("contract source must pin the canonical Logister OpenAPI to a full commit SHA");
+  }
+}
+
+// This gate deliberately accepts the canonical document's restricted YAML layout.
+// A schema/layout change requires review instead of silently relaxing auth checks.
+export function verifyArtifactSecurity(contract) {
+  for (const [path] of EXPECTED_CLI_OPERATIONS.filter(([path]) => path.includes("/artifacts/"))) {
+    const start = contract.indexOf(`  ${path}:\n`);
+    const block = start < 0 ? "" : contract.slice(start).split(/\n(?=  \/|\S)/)[0];
+    if (!/^      x-logister-required-scopes: \[artifacts:write\]\s*$/m.test(block)
+        || !/^      security:\s*\n        - cliBearerAuth: \[\]\s*\n(?=      \S)/m.test(block)
+        || !/^          multipart\/form-data:\s*$/m.test(block)) {
+      throw new Error(`artifact contract must require artifacts:write, CLI bearer auth and multipart upload: ${path}`);
+    }
+  }
+}
 
 export function verifyCliOperations(contract, expected = EXPECTED_CLI_OPERATIONS) {
   const operations = parseOperations(contract);

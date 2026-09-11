@@ -2,12 +2,13 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { verifyCliOperations } from "./contract-check-lib.mjs";
+import { verifyCliOperations, verifyContractVersion, verifyCanonicalSource, verifyArtifactSecurity } from "./contract-check-lib.mjs";
 
 const lockPath = resolve("contracts/logister-api.lock");
 const lock = parseLock(await readFile(lockPath, "utf8"));
-if (!/^https:\/\//.test(lock.source || "")) fail("contract lock source must be a canonical HTTPS URL");
+try { verifyCanonicalSource(lock.source); } catch (error) { fail(error.message); }
 if (lock.file !== "contracts/logister-openapi.yaml") fail("contract lock file must be contracts/logister-openapi.yaml");
+if (!lock.api_line) fail("contract lock must declare the reviewed api_line");
 if (!/^[a-f0-9]{64}$/.test(lock.sha256 || "")) fail("contract lock sha256 is invalid");
 
 const contract = await readFile(resolve(lock.file), "utf8");
@@ -16,15 +17,16 @@ if (actualSha !== lock.sha256) fail(`contract SHA mismatch: lock=${lock.sha256} 
 
 try {
   verifyCliOperations(contract);
+  verifyContractVersion(contract, lock.api_line);
+  verifyArtifactSecurity(contract);
 } catch (error) {
   fail(error.message);
 }
 
-for (const feature of ["traces", "monitors", "deployments", "insights", "metrics"]) {
+for (const feature of ["traces", "monitors", "deployments", "insights", "metrics", "mobile_artifacts"]) {
   if (!new RegExp(`^\\s+${feature}:`, "m").test(contract)) fail(`contract is missing CLI capability ${feature}`);
 }
 
-if (!/^\s*version:\s*["']?3\.6["']?\s*$/m.test(contract)) fail("CLI v1.0.0 requires API contract version 3.6");
 process.stdout.write(`Contract verified: ${lock.file}\nsha256=${actualSha}\n`);
 
 function parseLock(body) {

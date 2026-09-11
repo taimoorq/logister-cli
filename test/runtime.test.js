@@ -49,7 +49,7 @@ test("version/update public runtime ignores config and credentials while validat
       LOGISTER_CONFIG: "/malformed/or/private/config.json"
     }),
     {
-      version: "1.0.0", format: "json", timeoutMs: 1000, retries: 1,
+      version: "1.1.0", format: "json", timeoutMs: 1000, retries: 1,
       host: "", token: "", allowInsecureHttp: false, legacyCredentialPending: false
     }
   );

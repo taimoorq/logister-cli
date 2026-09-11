@@ -64,19 +64,24 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
           VERSION: ${{ steps.release.outputs.version }}
           OUTCOME: ${{ steps.channels.outcome }}
+          CHANNEL_STATE: ${{ steps.channels.outputs.state }}
         run: |
           state=success
           description="npm, GitHub, Homebrew, and Scoop verified for ${VERSION}"
           if [ "$OUTCOME" != "success" ]; then
-            state=pending
-            description="Waiting for every distribution channel for ${VERSION}"
+            state=error
+            description="Distribution verification failed for ${VERSION}; inspect provider or artifact errors"
+            if [ "$CHANNEL_STATE" = "pending" ]; then
+              state=pending
+              description="Waiting for every distribution channel for ${VERSION}"
+            fi
           fi
           gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${RELEASE_SHA}" \
             -f "state=$state" \
             -f context=release/distributions \
             -f "description=$description" \
             -f "target_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          if [ "$state" = "pending" ] && [ "${{ github.event_name }}" != "repository_dispatch" ]; then
+          if [ "$state" = "error" ] || { [ "$state" = "pending" ] && [ "${{ github.event_name }}" != "repository_dispatch" ]; }; then
             exit 1
           fi
       - name: Upload verified receipt
