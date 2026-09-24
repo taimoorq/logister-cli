@@ -20,6 +20,7 @@ const RESOURCE_ENDPOINTS = {
     })]
   },
   events: {
+    correlations: ({ id, options, runtime }) => [`${projectPath(options, runtime, "events")}/${encoded(id)}/correlations`, compact({ from: options.since, to: options.until })],
     list: ({ options, runtime }) => [projectPath(options, runtime, "events"), eventQuery(options)],
     show: ({ id, options, runtime }) => [`${projectPath(options, runtime, "events")}/${encoded(id)}`, {}],
     tail: ({ options, runtime }) => [projectPath(options, runtime, "events"), eventQuery(options)]
@@ -124,7 +125,7 @@ export async function runResourceCommand(resource, args, context) {
   const handler = RESOURCE_ENDPOINTS[resource]?.[subcommand];
   if (!handler) usageError(`Unknown ${resource} subcommand: ${subcommand}`);
   const [path, query] = handler({ id, options, runtime: context.runtime });
-  const columns = columnsFor(resource);
+  const columns = subcommand === "correlations" ? ["project_name", "type", "operation", "evidence", "environment", "release", "occurred_at"] : columnsFor(resource);
 
   if (["events", "logs"].includes(resource) && subcommand === "tail" && options.follow) {
     return followEvents({ path, query, context, columns });
@@ -132,6 +133,13 @@ export async function runResourceCommand(resource, args, context) {
   if (invocation.paginated) return runPaginatedRequest({ path, query, context, columns });
 
   const payload = await context.client.get(path, query, { signal: context.signal });
+  if (subcommand === "correlations") {
+    if (payload.partial || payload.truncated) context.stderr?.write("Related requests are incomplete; narrow the ISO 8601 time range or check retention coverage.\n");
+    if (options.format === "ndjson") {
+      const { items, ...metadata } = payload;
+      await context.write({ kind: "correlation_summary", ...metadata }, { format: "ndjson" });
+    }
+  }
   await context.write(payload, {
     format: options.format || defaultFormat(resource, subcommand),
     columns
@@ -171,6 +179,7 @@ function projectPath(options, runtime, suffix) {
 }
 
 function featureFor(resource, subcommand) {
+  if (resource === "events" && subcommand === "correlations") return "correlations";
   if (resource === "overview") return "project_summary";
   if (resource === "logs") return "logs";
   if (resource === "issues" && subcommand === "context") return "ai_context_bundles";

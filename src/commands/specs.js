@@ -107,6 +107,7 @@ export const COMMAND_SPECS = Object.freeze({
     default: spec({ options: [...GLOBAL_OPTIONS, ...RANGE_OPTIONS] })
   }, "default"),
   events: resource("events", {
+    correlations: spec({ positional: ["event-id"], options: [...GLOBAL_OPTIONS, ...RANGE_OPTIONS] }),
     list: spec({ options: [...GLOBAL_OPTIONS, ...PAGE_OPTIONS, ...RANGE_OPTIONS, ...EVENT_FILTERS], paginated: true }),
     show: spec({ positional: ["event-id"], options: GLOBAL_OPTIONS }),
     tail: spec({ options: [...GLOBAL_OPTIONS, ...PAGE_OPTIONS, ...RANGE_OPTIONS, ...EVENT_FILTERS, "follow", "pollIntervalMs"], paginated: true })

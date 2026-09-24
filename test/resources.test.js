@@ -168,3 +168,25 @@ test("maps every established read command to its strict API route", async () => 
     assert.deepEqual(calls, [{ path: expectedPath, query: expectedQuery }], `${resource} ${args.join(" ")}`);
   }
 });
+
+
+test("correlations negotiate their own feature and preserve coverage metadata", async () => {
+  const calls = [], written = [];
+  const payload = { items: [{ project_name: "API", evidence: "parent_span" }], partial: true, coverage: [{ signal: "span", partial: true }] };
+  let warning = "";
+  await runResourceCommand("events", ["correlations", "event-1"], {
+    client: {
+      async capabilities() { return { features: { correlations: true } }; },
+      async get(path, query) { calls.push({ path, query }); return payload; }
+    },
+    parsed: { options: { project: "mobile", since: "2026-09-24T12:00:00Z", format: "ndjson" } },
+    runtime: { project: "", version: "1.1.0" },
+    stderr: { write(text) { warning += text; } },
+    write(value) { written.push(value); }
+  });
+  assert.equal(calls[0].path, "/api/v1/cli/projects/mobile/events/event-1/correlations");
+  assert.deepEqual(calls[0].query, { from: "2026-09-24T12:00:00Z" });
+  assert.equal(written[0].kind, "correlation_summary");
+  assert.deepEqual(written[0].coverage, payload.coverage);
+  assert.match(warning, /incomplete/);
+});
