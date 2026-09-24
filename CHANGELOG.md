@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.0 - 2026-09-24
+
+- Add events correlations with related-project evidence, deployment references, coverage, and truncation metadata.
+- Review the additive backend 3.7 API contract while retaining capability-based handling for older servers.
+
 ## v1.1.0 - 2026-09-11
 
 - Added Android R8/ProGuard mapping and Apple dSYM uploads using explicit user-scoped artifact-write authorization.

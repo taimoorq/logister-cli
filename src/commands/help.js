@@ -23,6 +23,7 @@ Project data:
   logister overview --project <project>
   logister events list --project <project> --type error --since 24h
   logister events show <event-id> --project <project>
+  logister events correlations <event-id> --project <project> [--since <ISO8601> --until <ISO8601>]
   logister logs tail --project <project> --follow --format ndjson
   logister issues list --project <project> --status unresolved
   logister issues show <group-id> --project <project> --related-logs

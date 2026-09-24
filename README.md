@@ -485,3 +485,33 @@ package-manager manifest versions.
 
 The full versioning and package-manager integration policy lives in
 [docs/versioning.md](docs/versioning.md).
+
+## Follow an event across connected projects (1.2.0+)
+
+```sh
+logister events correlations EVENT_UUID --project PROJECT_UUID --format json
+logister events correlations EVENT_UUID --project PROJECT_UUID --since 2026-09-24T12:00:00Z --until 2026-09-24T12:10:00Z
+```
+
+Requires backend 3.7+ with the `correlations` capability enabled, all four token
+scopes `events:read`, `errors:read`, `traces:read`, `deployments:read`, and access
+to each returned project. A project connection cannot expand the token allowlist.
+The default window is ±15 minutes around the event; the maximum is 24 hours.
+Responses include `parent_span`, `shared_trace`, or `shared_request_id` evidence,
+per-signal storage coverage, and exact release deployment references.
+
+`partial` or `truncated` means the results are incomplete. JSON preserves all
+metadata; NDJSON emits a `correlation_summary` record before items. Table output
+warns on stderr. Narrow the time range to inspect a result limit. Older servers
+return an actionable unsupported-capability error.
+
+A linked-project lookup also requires Logister 3.7+, the instance flag
+`LOGISTER_CROSS_PROJECT_CORRELATIONS=true`, and explicit project/environment
+connections under Settings → Integrations → Connected projects. Enable related
+requests on both projects. A connection never grants project access.
+
+Use the returned request handle when reporting a handled HTTP failure later.
+Do not attach the most recent request to an unrelated crash or OS diagnostic.
+Configure each app's own `release` and `environment`; mobile and backend releases
+are independent. The backend shows exact identifier evidence and retention gaps.
+See the [request correlation guide](https://logister.org/docs/request-correlation/).
