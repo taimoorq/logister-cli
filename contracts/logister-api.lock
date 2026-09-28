@@ -1,4 +1,4 @@
-source=https://raw.githubusercontent.com/taimoorq/logister/60458f75ef67fe1560c4438ef3fd3e0e09d1c2c6/docs/openapi.yaml
+source=https://raw.githubusercontent.com/taimoorq/logister/ea9f25288b8323d8f58c1e7b9badc7a3e0944e46/docs/openapi.yaml
 file=contracts/logister-openapi.yaml
-api_line=3.7
-sha256=fa3f839b24bf017cf335a6ec2708fb23554bf60a13bab1d9b077c95dc75b4622
+api_line=3.8
+sha256=bc906e8238be1ada9eac1ba663c713920143c4538bd655a8a2fb55e3a3f39826

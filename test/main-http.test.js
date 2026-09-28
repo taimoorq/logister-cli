@@ -71,7 +71,7 @@ test("version command does not read or migrate private profile credentials", asy
       stdout,
       stderr: captureStream()
     });
-    assert.equal(JSON.parse(stdout.output).version, "1.2.0");
+    assert.equal(JSON.parse(stdout.output).version, "1.2.1");
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

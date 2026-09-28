@@ -515,3 +515,14 @@ Do not attach the most recent request to an unrelated crash or OS diagnostic.
 Configure each app's own `release` and `environment`; mobile and backend releases
 are independent. The backend shows exact identifier evidence and retention gaps.
 See the [request correlation guide](https://logister.org/docs/request-correlation/).
+
+### Enriched connected evidence (1.2.1+)
+
+With Logister 3.8, related-request output includes optional HTTP status, recorded
+duration and measurement scope, app build/device metadata, issue ownership, and
+the selected occurrence as `anchor`. JSON and NDJSON preserve the authorized
+metadata and coverage. Tables show separate HTTP/span outcomes and duration
+scope. These durations do not measure the same work across client and server.
+Older correlation-enabled servers remain supported with absent optional fields.
+Connected impact reports, issue export opt-ins and deployment comparisons are
+available through the Logister web interface.
