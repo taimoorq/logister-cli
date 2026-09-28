@@ -125,7 +125,7 @@ export async function runResourceCommand(resource, args, context) {
   const handler = RESOURCE_ENDPOINTS[resource]?.[subcommand];
   if (!handler) usageError(`Unknown ${resource} subcommand: ${subcommand}`);
   const [path, query] = handler({ id, options, runtime: context.runtime });
-  const columns = subcommand === "correlations" ? ["project_name", "type", "operation", "evidence", "environment", "release", "occurred_at"] : columnsFor(resource);
+  const columns = subcommand === "correlations" ? ["project_name", "type", "operation", "http_status_code", "status", "duration_ms", "duration_scope", "evidence", "environment", "release", "occurred_at"] : columnsFor(resource);
 
   if (["events", "logs"].includes(resource) && subcommand === "tail" && options.follow) {
     return followEvents({ path, query, context, columns });

@@ -15,7 +15,7 @@ const lockFile = resolve(process.argv[4] || "contracts/logister-api.lock");
 
 const body = await readFile(source);
 verifyCanonicalSource(canonicalSource);
-verifyContractVersion(body.toString(), "3.7");
+verifyContractVersion(body.toString(), "3.8");
 verifyCliOperations(body.toString());
 verifyArtifactSecurity(body.toString());
 const sha256 = createHash("sha256").update(body).digest("hex");
@@ -26,6 +26,6 @@ const upstreamSha = createHash("sha256").update(Buffer.from(await upstream.array
 if (sha256 !== upstreamSha) throw new Error("Local contract bytes do not match the pinned upstream commit");
 await mkdir(dirname(target), { recursive: true });
 await writeFile(target, body);
-await writeFile(lockFile, `source=${canonicalSource}\nfile=${targetLabel}\napi_line=3.7\nsha256=${sha256}\n`, "utf8");
+await writeFile(lockFile, `source=${canonicalSource}\nfile=${targetLabel}\napi_line=3.8\nsha256=${sha256}\n`, "utf8");
 
 process.stdout.write(`Synced ${target}\nsha256=${sha256}\n`);

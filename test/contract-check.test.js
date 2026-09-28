@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { EXPECTED_CLI_OPERATIONS, verifyCliOperations, verifyContractVersion, verifyCanonicalSource, verifyArtifactSecurity } from "../scripts/contract-check-lib.mjs";
 
-test("contract accepts reviewed 3.7 patches but requires explicit review for a new API line", () => {
-  for (const version of ["3.7", "3.7.0", "3.7.1"]) {
+test("contract accepts reviewed 3.8 patches but requires explicit review for a new API line", () => {
+  for (const version of ["3.8", "3.8.0", "3.8.1"]) {
     assert.equal(verifyContractVersion(`info:\n  version: \"${version}\"\npaths:\n`), version);
   }
-  for (const version of ["3.6", "3.8.0", "4.0", "3.7.1-rc.1"]) {
+  for (const version of ["3.6", "3.9.0", "4.0", "3.8.1-rc.1"]) {
     assert.throws(() => verifyContractVersion(`info:\n  version: ${version}\npaths:\n`), /outside reviewed/);
   }
   assert.throws(() => verifyContractVersion("paths:\n  version: 3.6\n"), /missing/);

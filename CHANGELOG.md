@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.1 - 2026-09-28
+
+- Review the additive backend 3.8 correlation contract, including selected occurrence metadata, HTTP outcome, duration scope, app builds and issue ownership.
+- Display HTTP status, span status, recorded duration and measurement scope in related-request tables; preserve enriched metadata and coverage in machine output.
+- Continue supporting older capability-enabled servers when optional enriched fields are absent.
+
 ## v1.2.0 - 2026-09-24
 
 - Add events correlations with related-project evidence, deployment references, coverage, and truncation metadata.
