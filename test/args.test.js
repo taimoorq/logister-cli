@@ -57,6 +57,18 @@ test("rejects unknown, repeated, and irrelevant options", () => {
   );
 });
 
+test("project identifiers reject dot segments and characters outside the slug alphabet", () => {
+  for (const project of [".", "..", "-api", "_api", ".hidden", "a/b", "a b", "a%2e", "x".repeat(256)]) {
+    assert.throws(() => validateInvocation(parseArgs(["events", "list", "--project", project])), /Project identifiers must start|between 1 and 255/, project);
+  }
+  for (const project of ["api", "my-app", "My.App_2", "0f8fad5b-d9cb-469f-a165-70867728950e", "x".repeat(255)]) {
+    assert.doesNotThrow(() => validateInvocation(parseArgs(["events", "list", "--project", project])), project);
+  }
+  assert.throws(() => validateInvocation(parseArgs(["projects", "show", ".."])), /must not be '\.' or '\.\.'/);
+  assert.throws(() => validateInvocation(parseArgs(["projects", "show", "a/b"])), /Project identifiers must start/);
+  assert.throws(() => validateInvocation(parseArgs(["deployments", "show", "."])), /must not be '\.' or '\.\.'/);
+});
+
 test("rejects unknown subcommands, extra identifiers, and invalid values", () => {
   assert.throws(() => validateInvocation(parseArgs(["traces", "destroy", "abc"])), /Unknown traces subcommand/);
   assert.throws(() => validateInvocation(parseArgs(["traces", "show", "one", "two"])), /Unexpected argument/);

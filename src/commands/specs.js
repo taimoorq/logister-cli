@@ -1,3 +1,5 @@
+import { PROJECT_IDENTIFIER_MESSAGE, validProjectIdentifier } from "../config/project.js";
+
 const GLOBAL_OPTIONS = [
   "host",
   "token",
@@ -256,6 +258,7 @@ function validateCommonValues(options) {
   }
   stringOption(options, "query", 200);
   stringOption(options, "project", 255);
+  if (options.project !== undefined && !validProjectIdentifier(options.project)) usageError(PROJECT_IDENTIFIER_MESSAGE);
   stringOption(options, "profile", 100);
   stringOption(options, "token", 8192);
   stringOption(options, "environment", 100);
@@ -318,7 +321,10 @@ function validateCommandValues(commandName, subcommand, options) {
 function validatePositionalValues(commandName, subcommand, positionals) {
   for (const value of positionals) {
     if (value.length > 512 || /[\u0000-\u001F\u007F]/.test(value)) usageError("Identifiers must be at most 512 printable characters.");
+    // An encoded "." or ".." path segment still resolves against the API path.
+    if (value === "." || value === "..") usageError("Identifiers must not be '.' or '..'.");
   }
+  if (commandName === "projects" && subcommand === "show" && !validProjectIdentifier(positionals[0])) usageError(PROJECT_IDENTIFIER_MESSAGE);
   if (commandName === "metrics" && subcommand === "query" && !validMetricName(positionals[0])) {
     usageError(`Invalid metric name '${positionals[0]}'.`);
   }

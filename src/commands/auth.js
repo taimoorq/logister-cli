@@ -2,6 +2,7 @@ import { deleteProfileToken, saveProfileLogin } from "../config/runtime.js";
 import { isPrintableToken, MAX_TOKEN_BYTES } from "../config/token.js";
 import { openBrowser, shouldOpenBrowser } from "../system/browser.js";
 import { isLoopbackHostname } from "../api/origin.js";
+import { redactSessionDiagnostics } from "../redaction/redact.js";
 
 export const DEFAULT_READ_SCOPES = Object.freeze([
   "projects:read",
@@ -16,6 +17,7 @@ export const DEFAULT_READ_SCOPES = Object.freeze([
   "metrics:read"
 ]);
 export const ARTIFACT_WRITE_SCOPE = "artifacts:write";
+const MIN_POLL_INTERVAL_MS = 250;
 
 export async function runAuthCommand(args, context) {
   const subcommand = args[0] || "status";
@@ -28,7 +30,7 @@ export async function runAuthCommand(args, context) {
   throw error;
 }
 
-async function login({ parsed, runtime, stdout, stderr, env, stdin, client, signal, credentialStore }) {
+async function login({ parsed, runtime, stdout, stderr, env, stdin, client, signal, credentialStore, openBrowserImpl }) {
   const host = parsed.options.host || runtime.host;
   const token = parsed.options.tokenStdin ? await readTokenFromStdin(stdin, signal) : parsed.options.token || env.LOGISTER_TOKEN;
   if (!host) {
@@ -39,7 +41,7 @@ async function login({ parsed, runtime, stdout, stderr, env, stdin, client, sign
 
   if (token) return saveLogin({ runtime, parsed, env, stdout, stderr, host, token, tokenMetadata: {}, credentialStore });
 
-  return deviceLogin({ parsed, runtime, stdout, stderr, env, client, signal, credentialStore });
+  return deviceLogin({ parsed, runtime, stdout, stderr, env, client, signal, credentialStore, openBrowserImpl });
 }
 
 async function saveLogin({ runtime, parsed, env, stdout, stderr, host, token, tokenMetadata, credentialStore }) {
@@ -58,20 +60,32 @@ async function saveLogin({ runtime, parsed, env, stdout, stderr, host, token, to
   }
 }
 
-async function deviceLogin({ parsed, runtime, stdout, stderr, env, client, signal, credentialStore }) {
+async function deviceLogin({ parsed, runtime, stdout, stderr, env, client, signal, credentialStore, openBrowserImpl = openBrowser }) {
   const scopes = parsed.options.artifactWrite ? [...DEFAULT_READ_SCOPES, ARTIFACT_WRITE_SCOPE] : DEFAULT_READ_SCOPES;
   const challenge = await client.post(
     "/api/v1/cli/device_authorizations",
     { client_name: "Logister CLI", scopes },
     { auth: false, signal }
   );
-  const verificationUrl = validateChallenge(challenge, { allowInsecureHttp: runtime.allowInsecureHttp });
-  if (shouldOpenBrowser(parsed.options, env)) openBrowser(verificationUrl);
+  const hostOrigin = new URL(runtime.host || parsed.options.host).origin;
+  const verification = validateChallenge(challenge, { allowInsecureHttp: runtime.allowInsecureHttp, hostOrigin });
+  if (verification.trusted && verification.ignoredUntrusted) {
+    stderr?.write(`Warning: ignored a device-flow verification URL outside ${hostOrigin}.\n`);
+  }
+  if (!verification.trusted) {
+    stderr?.write([
+      `Warning: the server returned a verification URL outside ${hostOrigin}; it was not opened automatically.`,
+      "Open it only if you trust that origin, and confirm the code matches.",
+      ""
+    ].join("\n"));
+  } else if (shouldOpenBrowser(parsed.options, env)) {
+    openBrowserImpl(verification.url);
+  }
 
   stdout.write([
     "Approve this Logister CLI login in your browser.",
     `Code: ${challenge.user_code}`,
-    `URL: ${verificationUrl}`,
+    verification.trusted ? `URL: ${verification.url}` : `Untrusted URL (not ${hostOrigin}): ${verification.url}`,
     ""
   ].join("\n"));
 
@@ -177,7 +191,7 @@ async function pollForDeviceToken({ client, deviceCode, expiresIn, intervalSecon
 
 function pollIntervalMs(intervalSeconds, env) {
   const override = Number(env.LOGISTER_AUTH_POLL_INTERVAL_MS);
-  if (Number.isFinite(override) && override >= 0) return override;
+  if (env.LOGISTER_AUTH_POLL_INTERVAL_MS && Number.isFinite(override) && override >= 0) return Math.max(override, MIN_POLL_INTERVAL_MS);
   return Math.max(intervalSeconds, 1) * 1000;
 }
 
@@ -225,19 +239,23 @@ async function status({ runtime, client, parsed, write, signal }) {
   };
 
   if (runtime.token && runtime.host) {
+    const redact = parsed.options.redact !== false;
     try {
-      payload.server_session = await client.get("/api/v1/cli/session", {}, { signal });
+      const session = await client.get("/api/v1/cli/session", {}, { signal });
+      payload.server_session = redact ? redactSessionDiagnostics(session) : session;
     } catch (error) {
       if (error?.interrupted || signal?.aborted) throw error;
       payload.server_session = null;
-      payload.server_session_error = {
+      const sessionError = {
         status: error.status || null,
         code: error.code || error.name,
         message: error.status === 404 ? "Session diagnostics are not available on this Logister server." : error.message
       };
+      payload.server_session_error = redact ? redactSessionDiagnostics(sessionError) : sessionError;
     }
   }
 
+  // Local fields such as token_source are CLI-generated; only the server-supplied objects are redacted.
   await write(payload, { format: parsed.options.format || "json", redact: false });
 }
 
@@ -248,7 +266,7 @@ async function logout({ runtime, stdout, env, credentialStore }) {
     : `No saved token was found for Logister profile '${runtime.profileName}'.\n`);
 }
 
-function validateChallenge(challenge, { allowInsecureHttp = false } = {}) {
+function validateChallenge(challenge, { allowInsecureHttp = false, hostOrigin }) {
   if (!challenge || typeof challenge !== "object") protocolError("Device authorization response must be a JSON object.");
   for (const field of ["device_code", "user_code"]) {
     if (typeof challenge[field] !== "string" || challenge[field].length === 0 || challenge[field].length > 1024 || /[\u0000-\u001F\u007F]/.test(challenge[field])) {
@@ -256,19 +274,30 @@ function validateChallenge(challenge, { allowInsecureHttp = false } = {}) {
     }
   }
   if (!/^[A-Za-z0-9-]{4,32}$/.test(challenge.user_code)) protocolError("Device authorization response contains an invalid user_code.");
-  const verificationUrl = challenge.verification_uri_complete || challenge.verification_uri;
+  const candidates = [challenge.verification_uri_complete, challenge.verification_uri]
+    .filter(Boolean)
+    .map((value) => verificationUrl(value, allowInsecureHttp));
+  if (candidates.length === 0) protocolError("Device authorization response contains an invalid verification URL.");
+  boundedPositiveNumber(challenge.expires_in, "expires_in", 3600);
+  boundedPositiveNumber(challenge.interval, "interval", 60);
+
+  // Only a URL on the configured server origin is opened or presented as trusted.
+  const trusted = candidates.find((url) => url.origin === hostOrigin);
+  if (trusted) return { url: trusted.toString(), trusted: true, ignoredUntrusted: candidates.some((url) => url.origin !== hostOrigin) };
+  return { url: candidates[0].toString(), trusted: false, ignoredUntrusted: false };
+}
+
+function verificationUrl(value, allowInsecureHttp) {
   let url;
   try {
-    url = new URL(verificationUrl);
+    url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol)) throw new Error("invalid protocol");
     if (url.username || url.password) throw new Error("embedded credentials");
     if (url.protocol === "http:" && !allowInsecureHttp && !isLoopbackHostname(url.hostname)) throw new Error("insecure verification URL");
   } catch {
     protocolError("Device authorization response contains an invalid verification URL.");
   }
-  boundedPositiveNumber(challenge.expires_in, "expires_in", 3600);
-  boundedPositiveNumber(challenge.interval, "interval", 60);
-  return url.toString();
+  return url;
 }
 
 function validateTokenPayload(payload) {

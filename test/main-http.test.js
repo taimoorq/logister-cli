@@ -71,7 +71,7 @@ test("version command does not read or migrate private profile credentials", asy
       stdout,
       stderr: captureStream()
     });
-    assert.equal(JSON.parse(stdout.output).version, "1.2.1");
+    assert.equal(JSON.parse(stdout.output).version, "1.3.0");
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
@@ -149,6 +149,61 @@ test("explicit safe re-login replaces an invalid legacy host without activating 
     });
     const loggedOut = JSON.parse(await (await import("node:fs/promises")).readFile(configPath, "utf8"));
     assert.equal(Object.hasOwn(loggedOut.profiles.default, "token"), false);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("doctor warns about --token outside auth login and redacts the server session payload", async () => {
+  const fixture = await startHttpFixture(({ url }) => {
+    if (url.pathname === "/api/v1/cli/capabilities") {
+      return { body: { server: "logister", minimum_cli_version: "0.1.0", recommended_cli_version: "1.0.0", features: { capabilities: true } } };
+    }
+    if (url.pathname === "/api/v1/cli/session") {
+      return { body: { token: { uuid: "safe", name: "ci Bearer abcDEF123456", scopes: ["projects:read"] }, accessible_project_count: 1 } };
+    }
+    return { status: 404, body: { code: "not_found", message: "Not found" } };
+  });
+  const temp = await mkdtemp(join(tmpdir(), "logister-doctor-token-"));
+  const stdout = captureStream();
+  const stderr = captureStream();
+  try {
+    await main(["doctor", "--host", fixture.host, "--token", "argv-secret", "--format", "json"], {
+      env: { LOGISTER_CONFIG: join(temp, "config.json"), LOGISTER_DISABLE_KEYCHAIN: "1" },
+      stdin: { async *[Symbol.asyncIterator]() {} },
+      stdout,
+      stderr,
+      fetchImpl: globalThis.fetch
+    });
+    assert.match(stderr.output, /--token is deprecated outside `logister auth login`/);
+    assert.equal(stderr.output.trim().split("\n").length, 1);
+    const payload = JSON.parse(stdout.output);
+    assert.equal(payload.session.token.uuid, "safe");
+    assert.equal(payload.session.token.name, "ci Bearer [REDACTED]");
+    assert.equal(stdout.output.includes("argv-secret"), false);
+    assert.equal(fixture.requests.find((request) => request.path === "/api/v1/cli/session").headers.authorization, "Bearer argv-secret");
+  } finally {
+    await fixture.close();
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("auth login --token does not print the argv deprecation warning", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "logister-login-token-"));
+  const stderr = captureStream();
+  try {
+    await main(["auth", "login", "--host", "https://new.example", "--token", "new-token"], {
+      env: { LOGISTER_CONFIG: join(temp, "config.json"), LOGISTER_DISABLE_KEYCHAIN: "1", CI: "1" },
+      stdin: { async *[Symbol.asyncIterator]() {} },
+      stdout: captureStream(),
+      stderr,
+      credentialStore: {
+        async readStoredToken() { return { token: "", source: "" }; },
+        async writeStoredToken() { return ""; },
+        async deleteStoredToken() { return { status: "not-found" }; }
+      }
+    });
+    assert.equal(stderr.output, "");
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
