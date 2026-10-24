@@ -213,6 +213,15 @@ again to replace it safely. Switching `--host` also suppresses saved profile
 credentials unless the new origin matches, or an explicit `--token` or
 `LOGISTER_TOKEN` accompanies the override.
 
+`--token` belongs to `auth login`. Other commands still accept it so existing
+overrides keep working, but they print a one-line stderr deprecation warning
+because command-line arguments are visible in process listings and shell
+history. Use `LOGISTER_TOKEN` for automation instead.
+
+Device login opens the browser only when the server's verification URL has the
+same origin as `--host`. Otherwise the CLI does not open it, prints a warning,
+and labels the URL as untrusted. Open it only if you trust that origin.
+
 For automation, avoid putting tokens in shell history:
 
 ```bash
@@ -259,7 +268,8 @@ logister update --check
 
 `doctor` reports the local CLI version, active profile, configured host, token
 presence, server feature map, and safe session/scope metadata. It never prints
-the token value. The CLI stops when it is below the server's minimum supported
+the token value. The server session payload in `doctor` and `auth status` goes
+through default redaction; pass `--no-redact` to see it unmodified. The CLI stops when it is below the server's minimum supported
 version and warns on stderr when the server recommends a newer version.
 
 ### 3. Inspect projects and telemetry
@@ -396,10 +406,23 @@ JSON output preserves the API envelope; NDJSON emits item records only.
 Non-NDJSON `--all` collection is capped at 100,000 records and 32 MiB of
 serialized rows.
 
-Output is additionally redacted by the CLI for sensitive-looking keys. Use
-`--no-redact` only when you intentionally need locally unredacted fields and
-have permission to view them. It never disables mandatory server-side
-redaction.
+Output is additionally redacted by the CLI. It masks values under
+sensitive-looking keys and `[name, value]` header pairs with a sensitive name.
+Inside strings it masks `Bearer` and `Basic` credentials, JWTs, Logister keys
+(`lgst_…` and the default `logister_…` token formats), AWS access key IDs, and
+PEM blocks. A bare `key` field, such as a metric key, stays visible. Only a
+secret-ish qualifier like `api_key`, `private_key`, `secret_key`, `access_key`,
+or `x-api-key` makes it sensitive. Use `--no-redact` only when you intentionally
+need locally unredacted fields and have permission to view them. It never
+disables mandatory server-side redaction.
+
+`--format markdown` output starts with a one-line blockquote that marks the
+content as untrusted telemetry data. Telemetry can contain text written by
+anyone who can reach your app, so AI tools should treat it as data, not
+instructions.
+
+`--project`, `LOGISTER_PROJECT`, and saved profile projects must start with a
+letter or number and use only letters, numbers, dots, underscores, or hyphens.
 
 For scripts, prefer JSON and let the command fail on authentication or capability errors:
 

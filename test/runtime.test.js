@@ -32,6 +32,24 @@ test("runtime rejects invalid environment and persisted output formats", async (
   }
 });
 
+test("runtime rejects dot-segment projects from the environment and the saved profile", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "logister-runtime-project-"));
+  const configPath = join(temp, "config.json");
+  const prior = process.env.LOGISTER_DISABLE_KEYCHAIN;
+  process.env.LOGISTER_DISABLE_KEYCHAIN = "1";
+  try {
+    await assert.rejects(() => loadRuntime({}, { LOGISTER_CONFIG: configPath, LOGISTER_PROJECT: ".." }), /project must start with a letter or number/);
+    await writeFile(configPath, JSON.stringify({ profiles: { default: { host: "https://a.example", project: "." } } }));
+    await assert.rejects(() => loadRuntime({}, { LOGISTER_CONFIG: configPath }), /profile 'default' project must start/);
+    await writeFile(configPath, JSON.stringify({ profiles: { default: { host: "https://a.example", project: "api" } } }));
+    assert.equal((await loadRuntime({}, { LOGISTER_CONFIG: configPath })).project, "api");
+  } finally {
+    if (prior === undefined) delete process.env.LOGISTER_DISABLE_KEYCHAIN;
+    else process.env.LOGISTER_DISABLE_KEYCHAIN = prior;
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
 test("runtime reports malformed config safely", async () => {
   const temp = await mkdtemp(join(tmpdir(), "logister-runtime-"));
   const configPath = join(temp, "config.json");
@@ -49,7 +67,7 @@ test("version/update public runtime ignores config and credentials while validat
       LOGISTER_CONFIG: "/malformed/or/private/config.json"
     }),
     {
-      version: "1.2.1", format: "json", timeoutMs: 1000, retries: 1,
+      version: "1.3.0", format: "json", timeoutMs: 1000, retries: 1,
       host: "", token: "", allowInsecureHttp: false, legacyCredentialPending: false
     }
   );

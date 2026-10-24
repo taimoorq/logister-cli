@@ -33,6 +33,15 @@ does not activate or migrate its secret. `auth status` reports it as unbound;
 run login again to replace it. A different `--host`/`LOGISTER_HOST` suppresses
 the saved credential and project unless an explicit token accompanies it.
 
+`--token` is meant for `auth login`. Since 1.3.0 any other command that receives
+it prints a one-line stderr deprecation warning and continues; use
+`LOGISTER_TOKEN` in automation.
+
+Device login auto-opens and prints the verification URL as trusted only when it
+has the same origin as `--host`. A URL on another origin is not opened, triggers
+a stderr warning, and is printed as `Untrusted URL`. `LOGISTER_AUTH_POLL_INTERVAL_MS`
+is clamped to at least 250 ms.
+
 `--host` must be an HTTPS origin. HTTP is allowed without acknowledgement only
 for `localhost`, `127.0.0.0/8`, and `::1`. Use `--allow-insecure-http` or
 `LOGISTER_ALLOW_INSECURE_HTTP=1` only for a trusted non-loopback development

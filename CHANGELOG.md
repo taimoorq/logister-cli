@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.0 - 2026-10-23
+
+- Stop redacting bare `key` fields, so `metrics catalog`, `metrics query`, and Insights show metric keys under default redaction. A `key` field stays sensitive with a secret-ish qualifier such as `api_key`, `private_key`, `secret_key`, `access_key`, or `x-api-key`.
+- Add value-pattern redaction. With redaction on, the CLI masks `Bearer` and `Basic` credentials, JWTs, `lgst_` and default `logister_` keys, AWS access key IDs, and PEM blocks inside strings, and the value of `[name, value]` header pairs with a sensitive name.
+- Redact the server session payload in `auth status` and `doctor` by default, keeping the token metadata fields visible. `--no-redact` shows it unmodified.
+- Pin device-flow verification URLs to the configured host origin. A URL on another origin is not opened automatically, triggers a stderr warning, and is labelled untrusted.
+- Print a one-line stderr deprecation warning when `--token` is used outside `auth login`. It is still accepted. Use `LOGISTER_TOKEN` for automation.
+- Reject `.`, `..`, and other values outside `^[A-Za-z0-9][A-Za-z0-9._-]*$` for `--project`, `LOGISTER_PROJECT`, saved profile projects, and `projects show`. Reject `.`/`..` as any positional identifier.
+- Start `--format markdown` output with a one-line untrusted telemetry data notice.
+- Clamp `LOGISTER_AUTH_POLL_INTERVAL_MS` to at least 250 ms.
+- Stop shipping `scripts/` and `docs/` in the npm package and remove the `.npmignore` that `files` overrode.
+- Document the macOS Keychain ACL caveat and the plaintext config fallback in SECURITY.md.
+
 ## v1.2.1 - 2026-09-28
 
 - Review the additive backend 3.8 correlation contract, including selected occurrence metadata, HTTP outcome, duration scope, app builds and issue ownership.

@@ -280,6 +280,124 @@ test("--token-stdin accepts one trailing newline and stores the exact printable 
   }
 });
 
+test("device login opens and prints only verification URLs on the configured host origin", async () => {
+  const cases = [
+    {
+      challenge: { verification_uri_complete: "https://logister.example.com/cli/device?user_code=CODE", verification_uri: "https://logister.example.com/cli/device" },
+      opened: ["https://logister.example.com/cli/device?user_code=CODE"],
+      stdout: /\nURL: https:\/\/logister\.example\.com\/cli\/device\?user_code=CODE\n/,
+      stderr: /^$/
+    },
+    {
+      challenge: { verification_uri_complete: "https://phish.example/cli/device?user_code=CODE", verification_uri: "https://logister.example.com/cli/device" },
+      opened: ["https://logister.example.com/cli/device"],
+      stdout: /\nURL: https:\/\/logister\.example\.com\/cli\/device\n/,
+      stderr: /ignored a device-flow verification URL outside https:\/\/logister\.example\.com/
+    },
+    {
+      challenge: { verification_uri_complete: "https://phish.example/cli/device?user_code=CODE" },
+      opened: [],
+      stdout: /Untrusted URL \(not https:\/\/logister\.example\.com\): https:\/\/phish\.example\/cli\/device\?user_code=CODE/,
+      stderr: /outside https:\/\/logister\.example\.com; it was not opened automatically/
+    },
+    {
+      challenge: { verification_uri: "https://logister.example.com:8443/cli/device" },
+      opened: [],
+      stdout: /Untrusted URL/,
+      stderr: /not opened automatically/
+    }
+  ];
+
+  for (const testCase of cases) {
+    const opened = [];
+    const env = { LOGISTER_CONFIG: "/unused/config.json", LOGISTER_AUTH_POLL_INTERVAL_MS: "0" };
+    const context = authContext({
+      client: {
+        async post(path) {
+          if (path.endsWith("device_authorizations")) {
+            return { device_code: "device", user_code: "CODE", expires_in: 30, interval: 1, ...testCase.challenge };
+          }
+          const error = new Error("denied");
+          error.body = { error: "access_denied" };
+          throw error;
+        }
+      },
+      env
+    });
+    context.parsed.options.noBrowser = undefined;
+    context.stderr = captureStream();
+    context.openBrowserImpl = (url) => opened.push(url);
+
+    await assert.rejects(() => runAuthCommand(["login"], context), /denied in the browser/);
+    assert.deepEqual(opened, testCase.opened);
+    assert.match(context.stdout.output, testCase.stdout);
+    assert.match(context.stderr.output, testCase.stderr);
+  }
+});
+
+test("LOGISTER_AUTH_POLL_INTERVAL_MS is clamped to at least 250 ms", async () => {
+  const env = { LOGISTER_CONFIG: "/unused/config.json", LOGISTER_AUTH_POLL_INTERVAL_MS: "0", CI: "1" };
+  const context = authContext({
+    client: {
+      async post(path) {
+        if (path.endsWith("device_authorizations")) {
+          return { device_code: "device", user_code: "CODE", verification_uri: "https://logister.example.com/cli/device", expires_in: 30, interval: 1 };
+        }
+        const error = new Error("denied");
+        error.body = { error: "access_denied" };
+        throw error;
+      }
+    },
+    env
+  });
+  const started = Date.now();
+  await assert.rejects(() => runAuthCommand(["login"], context), /denied in the browser/);
+  assert.ok(Date.now() - started >= 240);
+});
+
+test("auth status redacts the server session but not local diagnostics, unless --no-redact", async () => {
+  const session = {
+    token: { uuid: "safe", name: "laptop Bearer abcDEF123456", scopes: ["projects:read"] },
+    refresh_token: "server-secret"
+  };
+  const run = async (options) => {
+    let written;
+    let writeOptions;
+    await runAuthCommand(["status"], {
+      runtime: {
+        profileName: "default", configPath: "/config", host: "https://logister.example.com",
+        token: "secret", tokenSource: "keychain", project: "api", scopes: ["projects:read"], expiresAt: null
+      },
+      client: { async get() { return structuredClone(session); } },
+      parsed: { options },
+      write(payload, opts) { written = payload; writeOptions = opts; }
+    });
+    return { written, writeOptions };
+  };
+
+  const { written, writeOptions } = await run({});
+  assert.equal(writeOptions.redact, false);
+  assert.equal(written.token_source, "keychain");
+  assert.equal(written.server_session.token.uuid, "safe");
+  assert.equal(written.server_session.token.name, "laptop Bearer [REDACTED]");
+  assert.equal(written.server_session.refresh_token, "[REDACTED]");
+
+  const raw = await run({ redact: false });
+  assert.deepEqual(raw.written.server_session, session);
+});
+
+test("auth status redacts server session error text", async () => {
+  const failing = { async get() { const error = new Error("upstream said Bearer abcDEF123456"); error.status = 500; throw error; } };
+  let written;
+  await runAuthCommand(["status"], {
+    runtime: { profileName: "default", configPath: "/config", host: "https://logister.example.com", token: "secret" },
+    client: failing,
+    parsed: { options: {} },
+    write(payload) { written = payload; }
+  });
+  assert.equal(written.server_session_error.message, "upstream said Bearer [REDACTED]");
+});
+
 function captureStream() {
   return {
     output: "",

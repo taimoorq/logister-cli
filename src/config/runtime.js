@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { packageInfo } from "../version/package.js";
 import { normalizeLogisterOrigin } from "../api/origin.js";
 import { deleteStoredToken, legacyStoredTokenStatus, readStoredToken, writeStoredToken } from "./credential-store.js";
+import { validProjectIdentifier } from "./project.js";
 import { isPrintableToken, MAX_TOKEN_BYTES } from "./token.js";
 
 const DEFAULT_CREDENTIAL_STORE = Object.freeze({ deleteStoredToken, legacyStoredTokenStatus, readStoredToken, writeStoredToken });
@@ -45,6 +46,7 @@ export async function loadRuntime(options, env, credentialStore = DEFAULT_CREDEN
   }
   const project = options.project || env.LOGISTER_PROJECT || (host === savedOrigin ? profile.project : "") || "";
   validateRuntimeString(project, "project", { maximum: 255, allowEmpty: true });
+  if (project && !validProjectIdentifier(project)) configurationError("project must start with a letter or number and use only letters, numbers, dots, underscores, or hyphens");
 
   const format = options.format || env.LOGISTER_FORMAT || profile.format || "table";
   if (!["table", "json", "ndjson", "markdown"].includes(format)) {
@@ -361,6 +363,9 @@ function validateActiveProfile(profile, profileName) {
   }
   for (const [key, maximum] of [["host", 2048], ["token", 8192], ["project", 255], ["format", 20]]) {
     if (profile[key] !== undefined) validateRuntimeString(profile[key], `profile ${key}`, { maximum });
+  }
+  if (profile.project && !validProjectIdentifier(profile.project)) {
+    configurationError(`profile '${profileName}' project must start with a letter or number and use only letters, numbers, dots, underscores, or hyphens`);
   }
   if (profile.scopes !== undefined) {
     if (!Array.isArray(profile.scopes) || profile.scopes.length > 100 || !profile.scopes.every((scope) => typeof scope === "string" && /^[a-z_]+:(?:read|write)$/.test(scope))) {

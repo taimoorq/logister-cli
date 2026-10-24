@@ -38,6 +38,11 @@ export async function main(argv, io) {
     throw error;
   }
 
+  // --token stays accepted for documented overrides, but argv is visible to other local processes.
+  if (parsed.options.token && !(parsed.command === "auth" && invocation.subcommand === "login")) {
+    io.stderr?.write("Warning: --token is deprecated outside `logister auth login` because process listings and shell history can expose it. Use LOGISTER_TOKEN or a saved login instead.\n");
+  }
+
   let runtime;
   if (["version", "update"].includes(parsed.command)) runtime = loadPublicRuntime(parsed.options, io.env);
   else if (parsed.command === "auth" && invocation.subcommand === "logout") runtime = await loadCleanupRuntime(parsed.options, io.env);

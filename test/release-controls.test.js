@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verifyReleaseRef } from "../scripts/check-release-ref.mjs";
@@ -382,3 +382,10 @@ function git(cwd, ...args) {
 function jsonResponse(value) {
   return new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
 }
+
+test("npm package ships runtime files only and relies on the files allowlist", () => {
+  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.deepEqual(packageJson.files.filter((entry) => ["scripts/", "docs/", "test/", ".github/"].includes(entry)), []);
+  assert.ok(packageJson.files.includes("bin/") && packageJson.files.includes("src/"));
+  assert.equal(existsSync(new URL("../.npmignore", import.meta.url)), false);
+});

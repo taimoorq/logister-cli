@@ -43,7 +43,7 @@ Project data:
 
 Global options:
   --host <url>          Logister host. Overrides saved profile.
-  --token <token>       CLI access token. Prefer saved auth or LOGISTER_TOKEN.
+  --token <token>       CLI access token for auth login. Elsewhere deprecated (warns); prefer LOGISTER_TOKEN.
   --profile <name>      Config profile. Defaults to LOGISTER_PROFILE or default.
   --project <id>        Project UUID or slug.
   --format <type>       table, json, ndjson, or markdown.
