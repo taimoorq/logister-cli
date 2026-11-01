@@ -2,13 +2,13 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { verifyCliOperations, verifyContractVersion, verifyCanonicalSource, verifyArtifactSecurity } from "./contract-check-lib.mjs";
+import { REVIEWED_API_LINE, verifyCliOperations, verifyContractVersion, verifyCanonicalSource, verifyArtifactSecurity } from "./contract-check-lib.mjs";
 
 const lockPath = resolve("contracts/logister-api.lock");
 const lock = parseLock(await readFile(lockPath, "utf8"));
 try { verifyCanonicalSource(lock.source); } catch (error) { fail(error.message); }
 if (lock.file !== "contracts/logister-openapi.yaml") fail("contract lock file must be contracts/logister-openapi.yaml");
-if (!lock.api_line) fail("contract lock must declare the reviewed api_line");
+if (lock.api_line !== REVIEWED_API_LINE) fail(`contract lock api_line must be the reviewed API line ${REVIEWED_API_LINE}`);
 if (!/^[a-f0-9]{64}$/.test(lock.sha256 || "")) fail("contract lock sha256 is invalid");
 
 const contract = await readFile(resolve(lock.file), "utf8");

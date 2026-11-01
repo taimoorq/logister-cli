@@ -1,3 +1,5 @@
+export const REVIEWED_API_LINE = "4.1";
+
 export const EXPECTED_CLI_OPERATIONS = Object.freeze([
   ["/api/v1/cli/capabilities", "get", "getCliCapabilities"],
   ["/api/v1/cli/device_authorizations", "post", "createCliDeviceAuthorization"],
@@ -26,7 +28,7 @@ export const EXPECTED_CLI_OPERATIONS = Object.freeze([
   ["/api/v1/cli/projects/{project_uuid}/artifacts/apple-dsym", "post", "uploadCliAppleDsym"]
 ]);
 
-export function verifyContractVersion(contract, supported = "3.8") {
+export function verifyContractVersion(contract, supported = REVIEWED_API_LINE) {
   const info = /^info:\s*\n([\s\S]*?)(?=^\S)/m.exec(contract)?.[1];
   const version = /^  version:\s*["']?(\d+\.\d+(?:\.\d+)?)["']?\s*$/m.exec(info || "")?.[1];
   if (!/^\d+\.\d+$/.test(supported) || !version || version.split(".").slice(0, 2).join(".") !== supported) {
